@@ -82,6 +82,20 @@ public class User {
 	User.userList = userList;
     }
 
+
+    /**
+     * @return user
+     * 			with given name
+     */
+    public static User getUser(String name) {
+    	for (User user : User.getUserList()) {
+    		if(user.getName().equals(name)) {
+    			return user;
+    		}
+    	}
+    	return null;
+    }
+
     /**
      * @return the online
      */

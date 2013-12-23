@@ -50,138 +50,138 @@ public class FileServer implements IFileServerCli {
     private ObjectOutputStream writer = null;
     private ObjectInputStream reader = null;
 
-    static int tcpPort;
-    static String proxyHost;
-    static int udpPort;
-    static int alive;
-    static String dir;
-    static ExecutorService threadExecutor;
-    public static Hashtable<String, Integer> versionList = new Hashtable<String, Integer>();
+    private int tcpPort;
+    private String proxyHost;
+    private int udpPort;
+    private int alive;
+    private String dir;
     
+    private Hashtable<String, Integer> versionList = new Hashtable<String, Integer>();
     private ServerSocket socket = null;
     private DatagramSocket datagramSocket;
 
+    static ExecutorService threadExecutor;
+
     public FileServer(final Config config, final Shell shell) throws Exception {
-	threadExecutor = Executors.newCachedThreadPool();
-	this.config = config;
-	this.shell = shell;
-
-	if (config == null) {
-	    System.out.println(config);
-	    throw new IllegalArgumentException();
-	}
-
-	try {
-	    validateConfig(config);
-	} catch (Exception exc) {
-	    System.out.println(exc.getMessage());
-	}
-
-	shell.register(this);
+		threadExecutor = Executors.newCachedThreadPool();
+		this.config = config;
+		this.shell = shell;
 	
-	shellThread = new Thread(shell); 
-	shellThread.start(); 
+		if (config == null) {
+		    System.out.println(config);
+		    throw new IllegalArgumentException();
+		}
 	
-	//getThreadExecutor().execute(shell);
-	getThreadExecutor().execute(new FileServerSocket(tcpPort));
-	getThreadExecutor().execute(new sendIsAlive(tcpPort, proxyHost, udpPort,
-		alive, dir));
+		try {
+		    validateConfig(config);
+		} catch (Exception exc) {
+		    System.out.println(exc.getMessage());
+		}
+	
+		shell.register(this);
+		
+		shellThread = new Thread(shell); 
+		shellThread.start();
+		
+		//getThreadExecutor().execute(shell);
+		getThreadExecutor().execute(new FileServerSocket(tcpPort));
+		getThreadExecutor().execute(new sendIsAlive(tcpPort, proxyHost, udpPort, alive, dir));
     }
 
     private void validateConfig(Config config) throws Exception {
-	try {
-	    alive = config.getInt("fileserver.alive");
-	    dir = config.getString("fileserver.dir");
-	    tcpPort = config.getInt("tcp.port");
-	    proxyHost = config.getString("proxy.host");
-	    udpPort = config.getInt("proxy.udp.port");
-	} catch (Exception e) {
-	    System.out.println("fs.properties invalid");
-	}
+		try {
+		    alive = config.getInt("fileserver.alive");
+		    dir = config.getString("fileserver.dir");
+		    tcpPort = config.getInt("tcp.port");
+		    proxyHost = config.getString("proxy.host");
+		    udpPort = config.getInt("proxy.udp.port");
+		    System.out.println("fileserver = " + dir + " | tcpPort = " + tcpPort);
+		} catch (Exception e) {
+		    System.out.println("fs.properties invalid");
+		}
     }
 
     public class FileServerSocket implements Runnable {
-	private int tcpPort;
+    	private int tcpPort;
 	
 
-	public FileServerSocket(int tcpPort) {
-	    this.tcpPort = tcpPort;
-	}
-
-	@Override
-	public void run() {
-	    try {
-		socket = new ServerSocket(tcpPort);
-
-		while (true) {
-		    getThreadExecutor().execute(
-			    new FileServerSocketThread(socket.accept()));
+		public FileServerSocket(int tcpPort) {
+		    this.tcpPort = tcpPort;
 		}
-	    } catch (IOException e) {
-
-	    } finally {
-		if(socket != null){
+	
+		@Override
+		public void run() {
 		    try {
-			    socket.close();
-			} catch (IOException e) {
-
-			}
+			socket = new ServerSocket(tcpPort);
+	
+				while (true) {
+				    getThreadExecutor().execute(new FileServerSocketThread(socket.accept()));
+				}
+		    } catch (IOException e) {
+	
+		    } finally {
+				if(socket != null){
+				    try {
+					    socket.close();
+					} catch (IOException e) {
+		
+					}
+				}
+		    }
 		}
-	    }
-	}
     }
 
     public class FileServerSocketThread implements Runnable, IFileServer {
-	private Socket socket = null;
-	private ObjectOutputStream writer = null;
-	private ObjectInputStream reader = null;
-
-	public FileServerSocketThread(Socket socket) {
-	    this.socket = socket;
-	}
-
-	@Override
-	public void run() {
-	    Executors.newCachedThreadPool();
-
-	    try {
-		reader = new ObjectInputStream(socket.getInputStream());
-		writer = new ObjectOutputStream(socket.getOutputStream());
-
-		Object inputObject = null;
-
-		while (true) {
-		    try {
-			inputObject = reader.readObject();
-			if (inputObject instanceof ListRequest) {
-			    writer.writeObject(list());
-			} else if (inputObject instanceof DownloadFileRequest) {
-			    writer.writeObject(download((DownloadFileRequest) inputObject));
-			} else if (inputObject instanceof InfoRequest) {
-			    writer.writeObject(info((InfoRequest) inputObject));
-			} else if (inputObject instanceof VersionRequest) {
-			    writer.writeObject(version((VersionRequest) inputObject));
-			} else if (inputObject instanceof UploadRequest) {
-			    writer.writeObject(upload((UploadRequest) inputObject));
-			}
-
-		    } catch (ClassNotFoundException exc) {
-			writer.writeObject(new MessageResponse(
-				"Fehlerhafte Request"));
-		    } catch (IOException exc) {
-			writer.writeObject(new MessageResponse(exc.getMessage()));
-		    }
+		private Socket socket = null;
+		private ObjectOutputStream writer = null;
+		private ObjectInputStream reader = null;
+	
+		public FileServerSocketThread(Socket socket) {
+		    this.socket = socket;
 		}
+	
+		@Override
+		public void run() {
+		    Executors.newCachedThreadPool();
+	
+		    try {
+			reader = new ObjectInputStream(socket.getInputStream());
+			writer = new ObjectOutputStream(socket.getOutputStream());
+	
+			Object inputObject = null;
+	
+			while (true) {
+			    try {
+				inputObject = reader.readObject();
+				if (inputObject instanceof ListRequest) {
+				    writer.writeObject(list());
+				} else if (inputObject instanceof DownloadFileRequest) {
+				    writer.writeObject(download((DownloadFileRequest) inputObject));
+				} else if (inputObject instanceof InfoRequest) {
+				    writer.writeObject(info((InfoRequest) inputObject));
+				} else if (inputObject instanceof VersionRequest) {
+				    writer.writeObject(version((VersionRequest) inputObject));
+				} else if (inputObject instanceof UploadRequest) {
+				    writer.writeObject(upload((UploadRequest) inputObject));
+				}
+	
+			    } catch (ClassNotFoundException exc) {
+				writer.writeObject(new MessageResponse(
+					"Fehlerhafte Request"));
+			    } catch (IOException exc) {
+				writer.writeObject(new MessageResponse(exc.getMessage()));
+			    }
+			}
 	    } catch (IOException e) {
 
 	    } finally {
-		try {
-		    reader.close();
-		    writer.close();
-		    socket.close();
-		} catch (IOException e) {
-
-		}
+			try {
+			    reader.close();
+			    writer.close();
+			    socket.close();
+			} catch (IOException e) {
+	
+			}
 	    }
 	}
 
@@ -193,60 +193,53 @@ public class FileServer implements IFileServerCli {
 
 	    folder = new File(dir);
 	    listOfFiles = folder.listFiles();
+	    
 	    if (listOfFiles.length > 0) {
-		for (int i = 0; i < listOfFiles.length; i++) {
-		    if (listOfFiles[i].isFile()) {
-			list.add(listOfFiles[i].getName());
-		    }
-		}
+			for (int i = 0; i < listOfFiles.length; i++) {
+			    if (listOfFiles[i].isFile()) {
+					list.add(listOfFiles[i].getName());
+					if(!versionList.containsKey(listOfFiles[i].getName())) {
+						versionList.put(listOfFiles[i].getName(), 0);
+					}
+			    }
+			}
 	    }
 	    ListResponse response = new ListResponse(list);
 	    return response;
 	}
 
 	@Override
-	public Response download(DownloadFileRequest request)
-		throws IOException {
+	public Response download(DownloadFileRequest request) throws IOException {
 
 	    DownloadFileResponse response = null;
 	    DownloadTicket downloadTicket = request.getTicket();
 
 	    String user = downloadTicket.getUsername();
-	    String filepath = downloadTicket.getFilename();
-	    File file = new File(dir + "/" + filepath);
+	    String fileName = downloadTicket.getFilename();
+	    File file = new File(dir + "/" + fileName);
 
-	    int version = 1;
-
-	    Enumeration<String> enumKey = versionList.keys();
-
-	    while (enumKey.hasMoreElements()) {
-		String key = enumKey.nextElement();
-		if (versionList.containsKey(filepath)) {
-		    version = versionList.get(key);
-
+	    int version = 0;
+		if (versionList.containsKey(fileName)) {
+		    version = versionList.get(fileName);
 		}
-
-	    }
+		
 	    String checksumfile = downloadTicket.getChecksum();
+	    boolean checksum = ChecksumUtils.verifyChecksum(user, file, version, checksumfile);
 
-	    boolean checksum = ChecksumUtils.verifyChecksum(user, file,
-		    version, checksumfile);
+	    if (checksum) {
+			byte[] content = null;
+			InputStream is = null;
 
-	    if (checksum == true) {
-		byte[] content = null;
-		InputStream is = null;
-
-		try {
-		    is = new FileInputStream(dir + "/"
-			    + downloadTicket.getFilename());
-		    content = new byte[(int) file.length()];
-		    is.read(content);
-
-		} finally {
-		    is.close();
-		}
-
-		response = new DownloadFileResponse(downloadTicket, content);
+			try {
+			    content = new byte[(int) file.length()];
+			    is = new FileInputStream(dir + "/" + downloadTicket.getFilename());
+			    is.read(content);
+	
+			} finally {
+			    is.close();
+			}
+	
+			response = new DownloadFileResponse(downloadTicket, content);
 	    }
 	    return response;
 	}
@@ -265,19 +258,11 @@ public class FileServer implements IFileServerCli {
 	public Response version(VersionRequest request) throws IOException {
 	    String fileName = request.getFilename();
 
-	    int version = 0;
-
-	    if (versionList.isEmpty()) {
-		versionList.put(fileName, 1);
-		version = 1;
-	    } else {
-		if (!versionList.containsKey(fileName)) {
-		    versionList.put(fileName, 1);
-		    version = 1;
-		} else if (versionList.containsKey(fileName)) {
+	    int version = -1;
+	    if (versionList.containsKey(fileName)) {
 		    version = versionList.get(fileName);
-		}
 	    }
+	    
 	    VersionResponse response = new VersionResponse(fileName, version);
 	    return response;
 	}
@@ -286,22 +271,18 @@ public class FileServer implements IFileServerCli {
 	public MessageResponse upload(UploadRequest request) throws IOException {
 	    String fileName = request.getFilename();
 	    byte[] content = request.getContent();
-	    FileOutputStream fileWriter = null;
 	    int version = request.getVersion();
-
+	    
 	    File file = new File(dir + "/" + fileName);
 
-	    fileWriter = new FileOutputStream(file);
+	    FileOutputStream fileWriter = new FileOutputStream(file);
 	    fileWriter.write(content);
 	    fileWriter.close();
 
 	    if (versionList.containsKey(fileName)) {
-		if (versionList.get(fileName) == version) {
 		    versionList.remove(fileName);
-		    int newVersion = version + 1;
-		    versionList.put(fileName, newVersion);
-		}
 	    }
+	    versionList.put(fileName, version + 1);
 
 	    return new MessageResponse("uploaded");
 	}
@@ -309,159 +290,155 @@ public class FileServer implements IFileServerCli {
     }
 
     public class sendIsAlive implements Runnable {
-	private int tcpPort;
-	private String proxyHost;
-	private int udpPort;
-	private long alive;
-	private String dir;
+		private int tcpPort;
+		private String proxyHost;
+		private int udpPort;
+		private long alive;
+		private String dir;
+		
 	
-
-	public sendIsAlive(int tcpPort, String proxyHost, int udpPort,
-		long alive, String dir) {
-	    this.tcpPort = tcpPort;
-	    this.proxyHost = proxyHost;
-	    this.udpPort = udpPort;
-	    this.alive = alive;
-	    this.dir = dir;
-	}
-
-	@Override
-	public void run() {
-	    try {
-		datagramSocket = new DatagramSocket();
-		InetAddress IPAddress = InetAddress.getByName(proxyHost);
-		byte[] sendData = new byte[1024];
-
-		String s = "!alive " + proxyHost + " " + tcpPort + " " + dir;
-		sendData = s.getBytes();
-
-		while (true) {
-		    DatagramPacket packet = new DatagramPacket(sendData,
-			    sendData.length, IPAddress, udpPort);
-		    if(datagramSocket != null){
-			datagramSocket.send(packet);
+		public sendIsAlive(int tcpPort, String proxyHost, int udpPort, long alive, String dir) {
+		    this.tcpPort = tcpPort;
+		    this.proxyHost = proxyHost;
+		    this.udpPort = udpPort;
+		    this.alive = alive;
+		    this.dir = dir;
+		}
+	
+		@Override
+		public void run() {
+		    try {
+				datagramSocket = new DatagramSocket();
+				InetAddress IPAddress = InetAddress.getByName(proxyHost);
+				byte[] sendData = new byte[1024];
+		
+				String s = "!alive " + proxyHost + " " + tcpPort + " " + dir;
+				sendData = s.getBytes();
+		
+				while (true) {
+				    DatagramPacket packet = new DatagramPacket(sendData,
+					    sendData.length, IPAddress, udpPort);
+				    if(datagramSocket != null){
+					datagramSocket.send(packet);
+				    }
+				    Thread.sleep(alive);
+				}
+		    } catch (SocketException e) {
+	
+		    } catch (UnknownHostException e) {
+	
+		    } catch (IOException e) {
+	
+		    } catch (InterruptedException e) {
+	
+		    } finally {
+				if(datagramSocket != null){
+				    datagramSocket.close();
+				}
 		    }
-		    Thread.sleep(alive);
 		}
-	    } catch (SocketException e) {
-
-	    } catch (UnknownHostException e) {
-
-	    } catch (IOException e) {
-
-	    } catch (InterruptedException e) {
-
-	    } finally {
-		if(datagramSocket != null){
-		    datagramSocket.close();
-		}
-	    }
-	}
     }
 
     public Config getConfig() {
-	return config;
+    	return config;
     }
 
     public Object getResponse(Object request) {
-	Object responseObject = null;
-
-	try {
-	    writer.writeObject(request);
-	    writer.flush();
-
-	    while (true) {
-		responseObject = reader.readObject();
+		Object responseObject = null;
+	
+		try {
+		    writer.writeObject(request);
+		    writer.flush();
+	
+		    while (true) {
+			responseObject = reader.readObject();
+			return responseObject;
+		    }
+	
+		} catch (IOException e) {
+		    e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+		    e.printStackTrace();
+		}
+	
 		return responseObject;
-	    }
-
-	} catch (IOException e) {
-	    e.printStackTrace();
-	} catch (ClassNotFoundException e) {
-	    e.printStackTrace();
-	}
-
-	return responseObject;
     }
 
     @Command
     public MessageResponse exit() throws IOException {
 	
-//	try {
-//	    socket.close();
-//	}
-//	catch (Exception e) {
-//	    
-//	}
-//	
-//	try {
-//	    datagramSocket.close();
-//	}
-//	catch (Exception e) {
-//	    
-//	}
+	//	try {
+	//	    socket.close();
+	//	}
+	//	catch (Exception e) {
+	//	    
+	//	}
+	//	
+	//	try {
+	//	    datagramSocket.close();
+	//	}
+	//	catch (Exception e) {
+	//	    
+	//	}
+		
+		if(socket != null){
+		    try {
+		    	socket.close();
+		    } catch (Exception exc) {
 	
-	if(socket != null){
-	    try {
-		socket.close();
-	    } catch (Exception exc) {
-
-	    } finally {
-		socket = null;
-	    }
-	}
+		    } finally {
+		    	socket = null;
+		    }
+		}
+		
+		if(datagramSocket != null){
+		    try {
+		    	datagramSocket.close();
+		    } catch (Exception exc) {
 	
-	if(datagramSocket != null){
-	    try {
-		datagramSocket.close();
-	    } catch (Exception exc) {
-
-	    } finally {
-		datagramSocket = null;
-	    }
-	}
+		    } finally {
+		    	datagramSocket = null;
+		    }
+		}
+		
+		try {
+		    threadExecutor.shutdownNow();
+		}
+		catch (Exception e) {
+		    
+		}
+		
+		shellThread.interrupt();
+		shell.close();
 	
-	try {
-	    threadExecutor.shutdownNow();
-	}
-	catch (Exception e)
-	{
-	    
-	}
+		try {
+		    System.in.close();
+		    threadExecutor.shutdown();
+		} catch (Exception exc) {
 	
-	shellThread.interrupt();
-	shell.close();
-
-	try {
-	    System.in.close();
-	    threadExecutor.shutdown();
-	} catch (Exception exc) {
-
-	}
-
-	return new MessageResponse("Connection terminated!");
+		}
+	
+		return new MessageResponse("Connection terminated!");
     }
 
     public static ExecutorService getThreadExecutor() {
-	return threadExecutor;
+    	return threadExecutor;
     }
 
     public static void setThreadExecutor(ExecutorService threadExecutor) {
-	FileServer.threadExecutor = threadExecutor;
+    	FileServer.threadExecutor = threadExecutor;
     }
 
     /**
      * @param args
      */
     public static void main(String[] args) {
-	try {
-	    ComponentFactory componentFactory = new ComponentFactory();
-
-	    componentFactory.startFileServer(new Config(args[0]), new Shell(
-		    args[0], System.out, System.in));
-
-	} catch (Exception exc) {
-	    exc.printStackTrace();
-	}
+		try {
+		    ComponentFactory componentFactory = new ComponentFactory();
+		    componentFactory.startFileServer(new Config(args[0]), new Shell(args[0], System.out, System.in));
+	
+		} catch (Exception exc) {
+		    exc.printStackTrace();
+		}
     }
 }

@@ -1,0 +1,25 @@
+*	startProxy proxy
+*	startClient client
+*	startFileServer fs1
+*	startFileServer fs2
+*	startFileServer fs3
+*	startFileServer fs4
+
+client: !login alice 12345
+client: !upload upload.txt
+client: !upload upload.txt
+client: !upload upload.txt
+client: !upload upload.txt
+client: !upload upload.txt
+client: !upload upload.txt
+client: !upload upload.txt
+client: !upload upload.txt
+client: !download short.txt
+client: !download long.txt
+
+client: !exit
+proxy: !exit
+fs1: !exit
+fs2: !exit
+fs3: !exit
+fs4: !exit
