@@ -23,14 +23,13 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.Collections;
 
 import util.ChecksumUtils;
 import util.ComponentFactory;
 import util.Config;
 import cli.Command;
 import cli.Shell;
-
-import java.util.Collections;
 
 import message.Response;
 import message.request.BuyRequest;

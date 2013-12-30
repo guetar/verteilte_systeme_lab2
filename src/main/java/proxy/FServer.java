@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
-public class FServer implements Comparable {
+public class FServer implements Comparable<FServer> {
 
     private String ip = "test";
     private int tcpPort;
@@ -151,8 +151,7 @@ public class FServer implements Comparable {
     }
 
     @Override
-    public int compareTo(Object o) {
-        FServer fs = (FServer) o;
+    public int compareTo(FServer fs) {
         if (this.getUsage() < fs.getUsage()) {
             return -1;
         } else if (this.getUsage() > fs.getUsage()) {

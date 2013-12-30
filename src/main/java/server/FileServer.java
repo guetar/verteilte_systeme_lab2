@@ -218,28 +218,30 @@ public class FileServer implements IFileServerCli {
 	    String fileName = downloadTicket.getFilename();
 	    File file = new File(dir + "/" + fileName);
 
-	    int version = 0;
-		if (versionList.containsKey(fileName)) {
-		    version = versionList.get(fileName);
-		}
-		
-	    String checksumfile = downloadTicket.getChecksum();
-	    boolean checksum = ChecksumUtils.verifyChecksum(user, file, version, checksumfile);
-
-	    if (checksum) {
-			byte[] content = null;
-			InputStream is = null;
-
-			try {
-			    content = new byte[(int) file.length()];
-			    is = new FileInputStream(dir + "/" + downloadTicket.getFilename());
-			    is.read(content);
-	
-			} finally {
-			    is.close();
+	    if(file.exists()) {
+		    int version = 0;
+			if (versionList.containsKey(fileName)) {
+			    version = versionList.get(fileName);
 			}
+			
+		    String checksumfile = downloadTicket.getChecksum();
+		    boolean checksum = ChecksumUtils.verifyChecksum(user, file, version, checksumfile);
 	
-			response = new DownloadFileResponse(downloadTicket, content);
+		    if (checksum) {
+				byte[] content = null;
+				InputStream is = null;
+	
+				try {
+				    content = new byte[(int) file.length()];
+				    is = new FileInputStream(dir + "/" + downloadTicket.getFilename());
+				    is.read(content);
+		
+				} finally {
+				    is.close();
+				}
+		
+				response = new DownloadFileResponse(downloadTicket, content);
+		    }
 	    }
 	    return response;
 	}
