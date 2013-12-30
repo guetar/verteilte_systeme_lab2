@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
 
-public class FServer {
+public class FServer implements Comparable<FServer> {
 
     private String ip = "test";
     private int tcpPort;
@@ -14,8 +14,8 @@ public class FServer {
     private String dir;
     private long usage = 500;
     private long lastTime = 0;
-    public static ArrayList<FServer> fileServerList = new ArrayList<FServer>();
-    public Set<String> listFiles = new HashSet<String>();
+    private static ArrayList<FServer> fileServerList = new ArrayList<FServer>();
+    private Set<String> listFiles = new HashSet<String>();
     
     public FServer(int tcpPort) {
 	setOnline(true);
@@ -148,5 +148,16 @@ public class FServer {
      */
     public void setAddress(InetAddress address) {
 	this.address = address;
+    }
+
+    @Override
+    public int compareTo(FServer fs) {
+        if (this.getUsage() < fs.getUsage()) {
+            return -1;
+        } else if (this.getUsage() > fs.getUsage()) {
+            return 1;
+        } else {
+            return 0;
+        }
     }
 }

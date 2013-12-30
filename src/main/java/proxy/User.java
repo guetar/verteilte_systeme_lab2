@@ -21,6 +21,19 @@ public class User {
     public static void addUsertoList(User u) {
 	userList.add(u);
     }
+    
+    /**
+     * @return user
+     * 			with given name
+     */
+    public static User getUser(String name) {
+    	for (User user : User.getUserList()) {
+    		if(user.getName().equals(name)) {
+    			return user;
+    		}
+    	}
+    	return null;
+    }
 
     /**
      * @return the name

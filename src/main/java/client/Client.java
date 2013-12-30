@@ -45,7 +45,7 @@ public class Client implements IClientCli {
     private ObjectOutputStream writer = null;
     private ObjectInputStream reader = null;
 
-    public static String dir = null;
+    private String dir = null;
     private String host = null;
     private int tcpPort = 0;
 
