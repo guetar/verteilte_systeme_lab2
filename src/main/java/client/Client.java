@@ -228,126 +228,52 @@ public class Client implements IClientCli {
 
     @Command
     public Response download(String filename) throws IOException {
-	Object responseObject = getResponse(new DownloadTicketRequest(filename));
-	DownloadTicket downloadTicket = null;
-
-	if (responseObject instanceof MessageResponse) {
-	    shell.writeLine(responseObject.toString());
-	} else if (responseObject instanceof DownloadTicketResponse) {
-	    downloadTicket = ((DownloadTicketResponse) responseObject)
-		    .getTicket();
-	    shell.writeLine(responseObject.toString());
-
-	    InetAddress host = downloadTicket.getAddress();
-	    int tcpPort = downloadTicket.getPort();
-
-	    Socket fsSocket = null;
-	    InputStream fsIsSocket = null;
-	    OutputStream fsOsSocket = null;
-	    ObjectOutputStream fsWriter = null;
-	    ObjectInputStream fsReader = null;
-	    FileOutputStream fileWriter = null;
-
-	    try {
-		if (fsSocket == null) {
-		    fsSocket = new Socket(host, tcpPort);
-		    fsIsSocket = fsSocket.getInputStream();
-		    fsOsSocket = fsSocket.getOutputStream();
-		}
-	    } catch (Exception exc) {
-
-	    }
-
-	    File file = new File(dir + "/" + downloadTicket.getFilename());
-
-	    try {
-		fsWriter = new ObjectOutputStream(fsOsSocket);
-		fsReader = new ObjectInputStream(fsIsSocket);
-		fileWriter = new FileOutputStream(file);
-	    } catch (IOException exc) {
-
-	    }
-
-	    try {
-		fsWriter.writeObject(new DownloadFileRequest(downloadTicket));
-		fsWriter.flush();
-		byte[] content;
-
-		while (true) {
-		    responseObject = fsReader.readObject();
-		    content = ((DownloadFileResponse) responseObject)
-			    .getContent();
-		    fileWriter.write(content);
-		   
+		Object responseObject = getResponse(new DownloadTicketRequest(filename));
+		DownloadTicket downloadTicket = null;
+	
+		if (responseObject instanceof MessageResponse) {
 		    return (Response) responseObject;
+		} else if (responseObject instanceof DownloadFileResponse) {
+			
+		    downloadTicket = ((DownloadFileResponse) responseObject).getTicket();
+		    File file = new File(dir + "/" + downloadTicket.getFilename());
+	    	FileOutputStream fileWriter = new FileOutputStream(file);
+	
+		    try {
+				byte[] content = ((DownloadFileResponse) responseObject).getContent();
+				fileWriter.write(content);
+			    return (Response) responseObject;
+	
+		    } catch (IOException e) {
+	
+		    } finally {
+		    	fileWriter.close();
+		    }
 		}
-
-	    } catch (IOException e) {
-
-	    } catch (ClassNotFoundException e) {
-
-	    } finally {
-		try {
-		    fileWriter.close();
-		} catch (IOException e) {
-
-		}
-		try {
-		    fsWriter.close();
-		} catch (IOException e) {
-
-		}
-		try {
-		    fsReader.close();
-		} catch (IOException e) {
-
-		}
-		try {
-		    fsIsSocket.close();
-		} catch (IOException e) {
-		    fsIsSocket = null;
-		}
-		try {
-		    fsOsSocket.close();
-		} catch (IOException e) {
-		    fsOsSocket = null;
-		}
-		try {
-		    fsSocket.close();
-		} catch (IOException e) {
-		    fsSocket = null;
-		}
-	    }
-	}
-	return null;
+		return null;
     }
 
     @Command
     public MessageResponse upload(String filename) throws IOException {
-	MessageResponse response = null;
-	String filePath = dir + "/" + filename;
-	byte[] content = null;
-	InputStream is = null;
-	File file = new File(filePath);
-	int version = 1;
-
-	try {
-	    is = new FileInputStream(filePath);
-	    content = new byte[(int) file.length()];
-	    is.read(content);
-	    response = (MessageResponse) getResponse(new UploadRequest(filename,
-			version, content));
-	    
-	}catch(Exception e){
-	    response = new MessageResponse("File not available.");
-	}
-	finally {
-	    if(is != null){
-		is.close();
-	    }
-	}
+		String filePath = dir + "/" + filename;
+		byte[] content = null;
+		InputStream is = null;
+		File file = new File(filePath);
+		int version = 1;
 	
-	return response;
+		try {
+		    is = new FileInputStream(filePath);
+		    content = new byte[(int) file.length()];
+		    is.read(content);
+		    return (MessageResponse) getResponse(new UploadRequest(filename, version, content));
+		    
+		} catch(Exception e) {
+		    return new MessageResponse("File not available.");
+		} finally {
+		    if(is != null){
+		    	is.close();
+		    }
+		}
     }
 
     @Command
