@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -20,23 +21,33 @@ import java.util.Hashtable;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.bouncycastle.util.encoders.Base64;
+
+import message.Request;
 import message.Response;
 import message.request.DownloadFileRequest;
+import message.request.HmacRequest;
 import message.request.InfoRequest;
 import message.request.ListRequest;
 import message.request.UploadRequest;
 import message.request.VersionRequest;
 import message.response.DownloadFileResponse;
+import message.response.HmacResponse;
 import message.response.InfoResponse;
 import message.response.ListResponse;
 import message.response.MessageResponse;
 import message.response.VersionResponse;
 import model.DownloadTicket;
-
 import cli.Command;
 import cli.Shell;
-
 import util.ChecksumUtils;
 import util.ComponentFactory;
 import util.Config;
@@ -55,6 +66,7 @@ public class FileServer implements IFileServerCli {
     private int udpPort;
     private int alive;
     private String dir;
+    private String hmacKey;
     
     private Hashtable<String, Integer> versionList = new Hashtable<String, Integer>();
     private ServerSocket socket = null;
@@ -84,7 +96,7 @@ public class FileServer implements IFileServerCli {
 		shellThread.start();
 		
 		//getThreadExecutor().execute(shell);
-		getThreadExecutor().execute(new FileServerSocket(tcpPort));
+		getThreadExecutor().execute(new FileServerSocket(tcpPort, hmacKey));
 		getThreadExecutor().execute(new sendIsAlive(tcpPort, proxyHost, udpPort, alive, dir));
     }
 
@@ -95,7 +107,7 @@ public class FileServer implements IFileServerCli {
 		    tcpPort = config.getInt("tcp.port");
 		    proxyHost = config.getString("proxy.host");
 		    udpPort = config.getInt("proxy.udp.port");
-		    System.out.println("fileserver = " + dir + " | tcpPort = " + tcpPort);
+		    hmacKey = config.getString("hmac.key");
 		} catch (Exception e) {
 		    System.out.println("fs.properties invalid");
 		}
@@ -103,19 +115,30 @@ public class FileServer implements IFileServerCli {
 
     public class FileServerSocket implements Runnable {
     	private int tcpPort;
-	
+    	private Mac hMac;
 
-		public FileServerSocket(int tcpPort) {
+		public FileServerSocket(int tcpPort, String hmacKey) {
 		    this.tcpPort = tcpPort;
+			try{
+				Key secretKey = new SecretKeySpec(hmacKey.getBytes(), "HmacSHA256");
+
+				hMac = Mac.getInstance("HmacSHA256");
+				hMac.init(secretKey);
+
+			} catch (NoSuchAlgorithmException e) {
+				e.printStackTrace();
+			} catch (InvalidKeyException e) {
+				e.printStackTrace();
+			}
 		}
 	
 		@Override
 		public void run() {
 		    try {
-			socket = new ServerSocket(tcpPort);
+		    	socket = new ServerSocket(tcpPort);
 	
 				while (true) {
-				    getThreadExecutor().execute(new FileServerSocketThread(socket.accept()));
+				    getThreadExecutor().execute(new FileServerSocketThread(socket.accept(), hMac));
 				}
 		    } catch (IOException e) {
 	
@@ -135,9 +158,11 @@ public class FileServer implements IFileServerCli {
 		private Socket socket = null;
 		private ObjectOutputStream writer = null;
 		private ObjectInputStream reader = null;
+		private Mac hMac;
 	
-		public FileServerSocketThread(Socket socket) {
+		public FileServerSocketThread(Socket socket, Mac hMac) {
 		    this.socket = socket;
+		    this.hMac = hMac;
 		}
 	
 		@Override
@@ -145,150 +170,166 @@ public class FileServer implements IFileServerCli {
 		    Executors.newCachedThreadPool();
 	
 		    try {
-			reader = new ObjectInputStream(socket.getInputStream());
-			writer = new ObjectOutputStream(socket.getOutputStream());
-	
-			Object inputObject = null;
-	
-			while (true) {
-			    try {
-				inputObject = reader.readObject();
-				if (inputObject instanceof ListRequest) {
-				    writer.writeObject(list());
-				} else if (inputObject instanceof DownloadFileRequest) {
-				    writer.writeObject(download((DownloadFileRequest) inputObject));
-				} else if (inputObject instanceof InfoRequest) {
-				    writer.writeObject(info((InfoRequest) inputObject));
-				} else if (inputObject instanceof VersionRequest) {
-				    writer.writeObject(version((VersionRequest) inputObject));
-				} else if (inputObject instanceof UploadRequest) {
-				    writer.writeObject(upload((UploadRequest) inputObject));
+				reader = new ObjectInputStream(socket.getInputStream());
+				writer = new ObjectOutputStream(socket.getOutputStream());
+		
+				Object inputObject = null;
+
+				while (true) {
+				    try {
+						inputObject =  reader.readObject();
+
+						if (inputObject instanceof HmacRequest && verifyHmac((HmacRequest) inputObject)) {
+							Request request = ((HmacRequest) inputObject).getRequest();
+							
+							if (request instanceof ListRequest) {
+							    writer.writeObject(hmacResponse(list()));
+							} else if (request instanceof DownloadFileRequest) {
+							    writer.writeObject(hmacResponse(download((DownloadFileRequest) request)));
+							} else if (request instanceof InfoRequest) {
+							    writer.writeObject(hmacResponse(info((InfoRequest) request)));
+							} else if (request instanceof VersionRequest) {
+							    writer.writeObject(hmacResponse(version((VersionRequest) request)));
+							} else if (request instanceof UploadRequest) {
+							    writer.writeObject(hmacResponse(upload((UploadRequest) request)));
+							}
+						} else {
+							writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
+							shell.writeLine(inputObject.toString());
+						}
+				    } catch (ClassNotFoundException e) {
+						writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
+				    } catch (IOException e) {
+						writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
+				    }
 				}
+		    } catch (IOException e) {
 	
-			    } catch (ClassNotFoundException exc) {
-				writer.writeObject(new MessageResponse(
-					"Fehlerhafte Request"));
-			    } catch (IOException exc) {
-				writer.writeObject(new MessageResponse(exc.getMessage()));
-			    }
-			}
-	    } catch (IOException e) {
-
-	    } finally {
-			try {
-			    reader.close();
-			    writer.close();
-			    socket.close();
-			} catch (IOException e) {
-	
-			}
-	    }
-	}
-
-	@Override
-	public Response list() throws IOException {
-	    Set<String> list = new HashSet<String>();
-	    File folder;
-	    File[] listOfFiles = null;
-
-	    folder = new File(dir);
-	    listOfFiles = folder.listFiles();
-	    
-	    if (listOfFiles.length > 0) {
-			for (int i = 0; i < listOfFiles.length; i++) {
-			    if (listOfFiles[i].isFile()) {
-					list.add(listOfFiles[i].getName());
-					if(!versionList.containsKey(listOfFiles[i].getName())) {
-						versionList.put(listOfFiles[i].getName(), 0);
-					}
-			    }
-			}
-	    }
-	    ListResponse response = new ListResponse(list);
-	    return response;
-	}
-
-	@Override
-	public Response download(DownloadFileRequest request) throws IOException {
-
-	    DownloadFileResponse response = null;
-	    DownloadTicket downloadTicket = request.getTicket();
-
-	    String user = downloadTicket.getUsername();
-	    String fileName = downloadTicket.getFilename();
-	    File file = new File(dir + "/" + fileName);
-
-	    if(file.exists()) {
-		    int version = 0;
-			if (versionList.containsKey(fileName)) {
-			    version = versionList.get(fileName);
-			}
-			
-		    String checksumfile = downloadTicket.getChecksum();
-		    boolean checksum = ChecksumUtils.verifyChecksum(user, file, version, checksumfile);
-	
-		    if (checksum) {
-				byte[] content = null;
-				InputStream is = null;
-	
+		    } finally {
 				try {
-				    content = new byte[(int) file.length()];
-				    is = new FileInputStream(dir + "/" + downloadTicket.getFilename());
-				    is.read(content);
+				    reader.close();
+				    writer.close();
+				    socket.close();
+				} catch (IOException e) {
 		
-				} finally {
-				    is.close();
 				}
-		
-				response = new DownloadFileResponse(downloadTicket, content);
 		    }
-	    }
-	    return response;
-	}
+		}
+		
+		private boolean verifyHmac(HmacRequest request) {
+			hMac.update(request.getRequest().toString().getBytes());
+			byte[] computedHash = hMac.doFinal();
+			byte[] receivedHash = Base64.decode(((HmacRequest) request).getHmac());
+			return MessageDigest.isEqual(computedHash,receivedHash);
+		}
+		
+		private Response hmacResponse(Response response) {
+			hMac.update(response.toString().getBytes());
+			byte[] hmac = Base64.encode(hMac.doFinal());
+			return new HmacResponse(hmac, response);
+		}
 
-	@Override
-	public Response info(InfoRequest request) throws IOException {
-	    String filepath = request.getFilename();
-	    File file = new File(dir + "/" + filepath);
-	    long filesize = file.length();
-	    InfoResponse response = new InfoResponse(filepath, filesize);
+		@Override
+		public Response list() throws IOException {
+		    Set<String> list = new HashSet<String>();
+		    File folder;
+		    File[] listOfFiles = null;
+	
+		    folder = new File(dir);
+		    listOfFiles = folder.listFiles();
+		    
+		    if (listOfFiles.length > 0) {
+				for (int i = 0; i < listOfFiles.length; i++) {
+				    if (listOfFiles[i].isFile()) {
+						list.add(listOfFiles[i].getName());
+						if(!versionList.containsKey(listOfFiles[i].getName())) {
+							versionList.put(listOfFiles[i].getName(), 0);
+						}
+				    }
+				}
+		    }
+		    return new ListResponse(list);
+		}
+	
+		@Override
+		public Response download(DownloadFileRequest request) throws IOException {
+	
+		    Response response = new MessageResponse("File not available.");
+		    DownloadTicket downloadTicket = request.getTicket();
+	
+		    String user = downloadTicket.getUsername();
+		    String fileName = downloadTicket.getFilename();
+		    File file = new File(dir + "/" + fileName);
+	
+		    if(file.exists()) {
+			    int version = 0;
+				if (versionList.containsKey(fileName)) {
+				    version = versionList.get(fileName);
+				}
+				
+			    String checksumfile = downloadTicket.getChecksum();
+			    boolean checksum = ChecksumUtils.verifyChecksum(user, file, version, checksumfile);
+		
+			    if (checksum) {
+					byte[] content = null;
+					InputStream is = null;
+		
+					try {
+					    content = new byte[(int) file.length()];
+					    is = new FileInputStream(dir + "/" + downloadTicket.getFilename());
+					    is.read(content);
+			
+					} finally {
+					    is.close();
+					}
+			
+					response = new DownloadFileResponse(downloadTicket, content);
+			    }
+		    }
+		    return response;
+		}
+	
+		@Override
+		public Response info(InfoRequest request) throws IOException {
+		    String filepath = request.getFilename();
+		    File file = new File(dir + "/" + filepath);
+		    long filesize = file.length();
+		    InfoResponse response = new InfoResponse(filepath, filesize);
+	
+		    return response;
+		}
+	
+		@Override
+		public Response version(VersionRequest request) throws IOException {
+		    String fileName = request.getFilename();
+	
+		    int version = -1;
+		    if (versionList.containsKey(fileName)) {
+			    version = versionList.get(fileName);
+		    }
 
-	    return response;
-	}
-
-	@Override
-	public Response version(VersionRequest request) throws IOException {
-	    String fileName = request.getFilename();
-
-	    int version = -1;
-	    if (versionList.containsKey(fileName)) {
-		    version = versionList.get(fileName);
-	    }
-	    
-	    VersionResponse response = new VersionResponse(fileName, version);
-	    return response;
-	}
-
-	@Override
-	public MessageResponse upload(UploadRequest request) throws IOException {
-	    String fileName = request.getFilename();
-	    byte[] content = request.getContent();
-	    int version = request.getVersion();
-	    
-	    File file = new File(dir + "/" + fileName);
-
-	    FileOutputStream fileWriter = new FileOutputStream(file);
-	    fileWriter.write(content);
-	    fileWriter.close();
-
-	    if (versionList.containsKey(fileName)) {
-		    versionList.remove(fileName);
-	    }
-	    versionList.put(fileName, version + 1);
-
-	    return new MessageResponse("uploaded");
-	}
-
+		    return new VersionResponse(fileName, version);
+		}
+	
+		@Override
+		public MessageResponse upload(UploadRequest request) throws IOException {
+		    String fileName = request.getFilename();
+		    byte[] content = request.getContent();
+		    int version = request.getVersion();
+		    
+		    File file = new File(dir + "/" + fileName);
+	
+		    FileOutputStream fileWriter = new FileOutputStream(file);
+		    fileWriter.write(content);
+		    fileWriter.close();
+	
+		    if (versionList.containsKey(fileName)) {
+			    versionList.remove(fileName);
+		    }
+		    versionList.put(fileName, version + 1);
+	
+		    return new MessageResponse("uploaded");
+		}
     }
 
     public class sendIsAlive implements Runnable {
@@ -314,14 +355,13 @@ public class FileServer implements IFileServerCli {
 				InetAddress IPAddress = InetAddress.getByName(proxyHost);
 				byte[] sendData = new byte[1024];
 		
-				String s = "!alive " + proxyHost + " " + tcpPort + " " + dir;
+				String s = "!alive " + tcpPort + " " + proxyHost + " " + dir;
 				sendData = s.getBytes();
 		
 				while (true) {
-				    DatagramPacket packet = new DatagramPacket(sendData,
-					    sendData.length, IPAddress, udpPort);
+				    DatagramPacket packet = new DatagramPacket(sendData,  sendData.length, IPAddress, udpPort);
 				    if(datagramSocket != null){
-					datagramSocket.send(packet);
+				    	datagramSocket.send(packet);
 				    }
 				    Thread.sleep(alive);
 				}

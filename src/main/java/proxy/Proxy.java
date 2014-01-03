@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -24,18 +25,28 @@ import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Collections;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+
+import org.bouncycastle.util.encoders.Base64;
 
 import util.ChecksumUtils;
 import util.ComponentFactory;
 import util.Config;
 import cli.Command;
 import cli.Shell;
-
+import message.Request;
 import message.Response;
 import message.request.BuyRequest;
 import message.request.CreditsRequest;
 import message.request.DownloadFileRequest;
 import message.request.DownloadTicketRequest;
+import message.request.HmacRequest;
 import message.request.InfoRequest;
 import message.request.ListRequest;
 import message.request.LoginRequest;
@@ -47,6 +58,7 @@ import message.response.CreditsResponse;
 import message.response.DownloadFileResponse;
 import message.response.DownloadTicketResponse;
 import message.response.FileServerInfoResponse;
+import message.response.HmacResponse;
 import message.response.InfoResponse;
 import message.response.ListResponse;
 import message.response.LoginResponse;
@@ -62,13 +74,13 @@ public class Proxy implements IProxyCli {
 	private final Config config;
 	private final Shell shell;
 	private Thread shellThread = null;
-
 	private Config configUser;
+	
 	private int tcpPort = 0;
-
 	private int udpPort;
 	private static long timeout;
 	private int checkPeriod;
+	private String hmacKey;
 
 	Timer timer = new Timer();
 
@@ -97,8 +109,8 @@ public class Proxy implements IProxyCli {
 
 		try {
 			validateConfig(config);
-		} catch (Exception exc) {
-			System.out.println(exc.getMessage());
+		} catch (Exception e) {
+			System.out.println(e.getMessage());
 		}
 
 		shell.register(this);
@@ -107,62 +119,53 @@ public class Proxy implements IProxyCli {
 		shellThread.start();
 
 		// getThreadExecutor().execute(shell);
-		getThreadExecutor().execute(new ProxySocket(tcpPort));
+		getThreadExecutor().execute(new ProxySocket(tcpPort, hmacKey));
 		getThreadExecutor().execute(new ProxyDatagramSocket(udpPort));
 
 		timer.schedule(new Alive(), checkPeriod, checkPeriod);
 	}
 
 	private void validateConfig(Config config) throws Exception {
-		try {
-			tcpPort = config.getInt("tcp.port");
-			udpPort = config.getInt("udp.port");
-			timeout = config.getInt("fileserver.timeout");
-			checkPeriod = config.getInt("fileserver.checkPeriod");
-		} catch (Exception exc) {
-			throw new Exception("client.properties invalid");
+		
+		tcpPort = config.getInt("tcp.port");
+		udpPort = config.getInt("udp.port");
+		timeout = config.getInt("fileserver.timeout");
+		checkPeriod = config.getInt("fileserver.checkPeriod");
+		hmacKey = config.getString("hmac.key");
+		InputStream inUserProperties = ClassLoader.getSystemResourceAsStream("user.properties");
 
-		}
+		if (inUserProperties != null) {
+			Properties userProperties = new Properties();
+			userProperties.load(inUserProperties);
+			Enumeration<Object> keys = userProperties.keys();
+			userkeys = new HashSet<String>();
 
-		try {
-			InputStream inUserProperties = ClassLoader.getSystemResourceAsStream("user.properties");
+			while (keys.hasMoreElements()) {
+				String key = (String) keys.nextElement();
+				String u = "";
 
-			if (inUserProperties != null) {
-				Properties userProperties = new Properties();
-				userProperties.load(inUserProperties);
-				Enumeration<Object> keys = userProperties.keys();
-				userkeys = new HashSet<String>();
-
-				while (keys.hasMoreElements()) {
-					String key = (String) keys.nextElement();
-					String u = "";
-
-					if (key.contains(".credits")) {
-						u = key.replace(".credits", "");
-					}
-					if (key.contains(".password")) {
-						u = key.replace(".password", "");
-					}
-					userkeys.add(u);
+				if (key.contains(".credits")) {
+					u = key.replace(".credits", "");
 				}
-
-				User.getUserList().clear();
-
-				for (Iterator<String> it = userkeys.iterator(); it.hasNext();) {
-					String user = it.next();
-					int credits;
-					String userPropertiesKey = user + ".credits";
-					credits = configUser.getInt(userPropertiesKey);
-					userPropertiesKey = user + ".password";
-					String password;
-					password = configUser.getString(userPropertiesKey);
-
-					User.addUsertoList(new User(user, password, credits));
+				if (key.contains(".password")) {
+					u = key.replace(".password", "");
 				}
+				userkeys.add(u);
 			}
-		} catch (Exception exc) {
-			throw new Exception("user.properties invalid");
 
+			User.getUserList().clear();
+
+			for (Iterator<String> it = userkeys.iterator(); it.hasNext();) {
+				String user = it.next();
+				int credits;
+				String userPropertiesKey = user + ".credits";
+				credits = configUser.getInt(userPropertiesKey);
+				userPropertiesKey = user + ".password";
+				String password;
+				password = configUser.getString(userPropertiesKey);
+
+				User.addUsertoList(new User(user, password, credits));
+			}
 		}
 	}
 
@@ -195,22 +198,22 @@ public class Proxy implements IProxyCli {
 					String[] splitArray = input.split(" ");
 					long last = System.currentTimeMillis();
 					
-					port = Integer.parseInt(splitArray[2]);
-					address = InetAddress.getByName(splitArray[1]);
+					port = Integer.parseInt(splitArray[1]);
+					address = InetAddress.getByName(splitArray[2]);
 					dir = splitArray[3];
 
-					if (!isAlive.containsKey(splitArray[2])) {
-						isAlive.put(splitArray[2], "online");
+					if (!isAlive.containsKey(splitArray[1])) {
+						isAlive.put(splitArray[1], "online");
 						FServer.addFileServertoList(new FServer(dir, port, address));
-					} else if (isAlive.containsKey(splitArray[2])) {
+					} else if (isAlive.containsKey(splitArray[1])) {
 						for (FServer fileServer : FServer.getFileServerList()) {
 							if (fileServer.getTcpPort() == port) {
 								if (fileServer.isOnline() == true) {
 									fileServer.setLastTime(last);
 									break;
 								} else if (fileServer.isOnline() == false) {
-									isAlive.remove(splitArray[2]);
-									isAlive.put(splitArray[2], "online");
+									isAlive.remove(splitArray[1]);
+									isAlive.put(splitArray[1], "online");
 									fileServer.setOnline(true);
 									fileServer.setLastTime(last);
 									break;
@@ -245,13 +248,9 @@ public class Proxy implements IProxyCli {
 					now = System.currentTimeMillis();
 					time = now - last;
 
-					if (fileServer.isOnline() == true) {
-						if (time > Proxy.timeout) {
-							fileServer.setOnline(false);
-							ProxyDatagramSocket.isAlive.put(
-									String.valueOf(fileServer.getTcpPort()),
-									"offline");
-						}
+					if (fileServer.isOnline() && time > Proxy.timeout) {
+						fileServer.setOnline(false);
+						ProxyDatagramSocket.isAlive.put(String.valueOf(fileServer.getTcpPort()), "offline");
 					}
 				}
 			}
@@ -261,9 +260,21 @@ public class Proxy implements IProxyCli {
 	public class ProxySocket implements Runnable {
 
 		int tcpPort;
+		Mac hMac;
 
-		public ProxySocket(int tcpPort) {
+		public ProxySocket(int tcpPort, String hmacKey) {
 			this.tcpPort = tcpPort;
+			try{
+				Key secretKey = new SecretKeySpec(hmacKey.getBytes(), "HmacSHA256");
+
+				hMac = Mac.getInstance("HmacSHA256");
+				hMac.init(secretKey);
+				
+			} catch (NoSuchAlgorithmException e) {
+				e.printStackTrace();
+			} catch (InvalidKeyException e) {
+				e.printStackTrace();
+			}
 		}
 
 		public void run() {
@@ -274,10 +285,10 @@ public class Proxy implements IProxyCli {
 			}
 			try {
 				while (true) {
-					getThreadExecutor().execute(
-							new ProxySocketThread(proxySocket.accept()));
+					getThreadExecutor().execute(new ProxySocketThread(proxySocket.accept(), hMac));
 				}
 			} catch (IOException e) {
+				// Occurs if socket is closed by !exit
 			}
 		}
 	}
@@ -295,14 +306,17 @@ public class Proxy implements IProxyCli {
 
 		private String loggedInUser = null;
 		private boolean loggedIn = false;
-		int credits;
+		private int credits;
+		private Mac hMac;
+		
 		String download;
 		String checksum = "checksum";
 		InetAddress address;
 		Set<String> listFiles = new HashSet<String>();
 
-		public ProxySocketThread(Socket socket) {
+		public ProxySocketThread(Socket socket, Mac hMac) {
 			this.socket = socket;
+			this.hMac = hMac;
 		}
 
 		public void run() {
@@ -332,14 +346,13 @@ public class Proxy implements IProxyCli {
 							writer.writeObject(upload((UploadRequest) inputObject));
 						}
 					} catch (ClassNotFoundException exc) {
-						writer.writeObject(new MessageResponse(
-								"Fehlerhafte Request"));
+						writer.writeObject(new MessageResponse("Fehlerhafter Request"));
 					} catch (IOException exc) {
-						writer.writeObject(new MessageResponse(exc.getMessage()));
+						writer.writeObject(new MessageResponse("Fehlerhafter Request"));
 					}
 				}
 			} catch (IOException e) {
-
+				
 			} finally {
 				try {
 					writer.close();
@@ -390,50 +403,47 @@ public class Proxy implements IProxyCli {
 		private void closeConnection() {
 			try {
 				writerFileServer.close();
-			} catch (Exception exc) {
-
-			}
-			try {
 				readerFileServer.close();
-			} catch (Exception exc) {
-
-			}
-
-			try {
 				isSocketFileServer.close();
-			} catch (Exception exc) {
-
-			} finally {
-				isSocketFileServer = null;
-			}
-
-			try {
 				osSocketFileServer.close();
-			} catch (Exception exc) {
-
-			} finally {
-				osSocketFileServer = null;
-			}
-
-			try {
 				socketFileServer.close();
 			} catch (Exception exc) {
 
 			} finally {
+				isSocketFileServer = null;
+				osSocketFileServer = null;
 				socketFileServer = null;
 			}
 		}
+		
+		public boolean verifyHmac(HmacResponse response) {
+			hMac.update(response.getResponse().toString().getBytes());
+			byte[] computedHash = hMac.doFinal();
+			byte[] receivedHash = Base64.decode(((HmacResponse) response).getHmac());
+			return MessageDigest.isEqual(computedHash,receivedHash);
+		}
+		
+		public Request hmacRequest(Request request) {
+			hMac.update(request.toString().getBytes());
+			byte[] hmac = Base64.encode(hMac.doFinal());
+			return new HmacRequest(hmac, request);
+		}
 
-		public Object getResponse(Object request) {
-			Object responseObject = null;
+		public Response getResponse(Request request) {
+			Response responseObject = null;
 
 			try {
-				writerFileServer.writeObject(request);
+				writerFileServer.writeObject(hmacRequest(request));
 				writerFileServer.flush();
 
 				while (true) {
-					responseObject = readerFileServer.readObject();
-					return responseObject;
+					responseObject = (Response) readerFileServer.readObject();
+					if (responseObject instanceof HmacResponse && verifyHmac((HmacResponse) responseObject)) {
+						return ((HmacResponse) responseObject).getResponse();
+					} else {
+						writer.writeObject(new MessageResponse("Fehlerhafte Response"));
+						shell.writeLine(responseObject.toString());
+					}
 				}
 
 			} catch (IOException e) {
@@ -513,7 +523,7 @@ public class Proxy implements IProxyCli {
 					if (fileServer.isOnline() == true) {
 						try {
 							openConnection(fileServer.getAddress(), fileServer.getTcpPort());
-							Object responseObject = getResponse(new ListRequest());
+							Response responseObject = getResponse(new ListRequest());
 
 							if (responseObject instanceof ListResponse) {
 
@@ -541,6 +551,7 @@ public class Proxy implements IProxyCli {
 
 		@Override
 		public Response download(DownloadTicketRequest request) throws IOException {
+			
 			String fileName = request.getFilename();
 			Response response = new MessageResponse("File not available.");
 
@@ -576,6 +587,8 @@ public class Proxy implements IProxyCli {
 						try {
 							openConnection(fileServer.getAddress(), fileServer.getTcpPort());
 
+							InfoResponse infoResponse = (InfoResponse) getResponse(new InfoRequest(fileName));
+							fileSize = infoResponse.getSize();
                             VersionResponse versionResponse = (VersionResponse) getResponse(new VersionRequest(fileName));
 //							System.out.println("fileserver = " + fileServer.getDir() + " | files = " + fileServer.getListFiles().toString() + " | usage = " + fileServer.getUsage() + " | version = " + versionResponse.getVersion());
 
@@ -598,15 +611,11 @@ public class Proxy implements IProxyCli {
 						try {
 							openConnection(downloadServer.getAddress(), downloadServer.getTcpPort());
 //							System.out.println("fileserver = " + downloadServer.getDir() + " | files = " + downloadServer.getListFiles().toString() + " | usage = " + downloadServer.getUsage());
-
-							InfoResponse infoResponse = (InfoResponse) getResponse(new InfoRequest(fileName));
-							fileSize = infoResponse.getSize();
 							
 							String checksum = ChecksumUtils.generateChecksum(loggedInUser, fileName, version, fileSize);
 							DownloadTicket ticket = new DownloadTicket(loggedInUser, fileName, checksum, downloadServer.getAddress(), downloadServer.getTcpPort());
 
-							DownloadFileResponse fileResponse = (DownloadFileResponse) getResponse(new DownloadFileRequest(ticket));
-							response = new DownloadTicketResponse(fileResponse.getTicket());
+							response = (DownloadFileResponse) getResponse(new DownloadFileRequest(ticket));
 							
 							downloadServer.setUsage(downloadServer.getUsage() + fileSize);
 							user.setCredits(user.getCredits() - fileSize);
@@ -631,6 +640,7 @@ public class Proxy implements IProxyCli {
 
 		@Override
 		public MessageResponse upload(UploadRequest request) throws IOException {
+			
 			String fileName = request.getFilename();
 			MessageResponse response = new MessageResponse("File could not be uploaded.");
 
@@ -666,9 +676,11 @@ public class Proxy implements IProxyCli {
 						try {
 							openConnection(fileServer.getAddress(), fileServer.getTcpPort());
 
+		                	InfoResponse infoResponseObject = (InfoResponse) getResponse(new InfoRequest(fileName));
+							fileSize = infoResponseObject.getSize();
                             VersionResponse versionResponse = (VersionResponse) getResponse(new VersionRequest(fileName));
+                            
 //							System.out.println("fileserver = " + fileServer.getDir() + " | files = " + fileServer.getListFiles().toString() + " | usage = " + fileServer.getUsage() + " | version = " + versionResponse.getVersion());
-
                             if (versionResponse.getVersion() >= version) {
                                 version = versionResponse.getVersion();
                             }
@@ -695,8 +707,6 @@ public class Proxy implements IProxyCli {
 							response = (MessageResponse) getResponse(new UploadRequest(fileName, version, content));
 							
 //							System.out.println("fileserver = " + fileServer.getDir() + " | files = " + fileServer.getListFiles().toString() + " | usage = " + fileServer.getUsage() + " | version = " + versionResponse.getVersion());
-		                	InfoResponse infoResponseObject = (InfoResponse) getResponse(new InfoRequest(fileName));
-							fileSize = infoResponseObject.getSize();
 							fileServer.setUsage(fileServer.getUsage() + fileSize);
 							
 							closeConnection();
