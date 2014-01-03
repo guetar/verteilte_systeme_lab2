@@ -346,9 +346,9 @@ public class Proxy implements IProxyCli {
 							writer.writeObject(upload((UploadRequest) inputObject));
 						}
 					} catch (ClassNotFoundException exc) {
-
+						writer.writeObject(new MessageResponse("Fehlerhafter Request"));
 					} catch (IOException exc) {
-
+						writer.writeObject(new MessageResponse("Fehlerhafter Request"));
 					}
 				}
 			} catch (IOException e) {
@@ -551,6 +551,7 @@ public class Proxy implements IProxyCli {
 
 		@Override
 		public Response download(DownloadTicketRequest request) throws IOException {
+			
 			String fileName = request.getFilename();
 			Response response = new MessageResponse("File not available.");
 
@@ -586,6 +587,8 @@ public class Proxy implements IProxyCli {
 						try {
 							openConnection(fileServer.getAddress(), fileServer.getTcpPort());
 
+							InfoResponse infoResponse = (InfoResponse) getResponse(new InfoRequest(fileName));
+							fileSize = infoResponse.getSize();
                             VersionResponse versionResponse = (VersionResponse) getResponse(new VersionRequest(fileName));
 //							System.out.println("fileserver = " + fileServer.getDir() + " | files = " + fileServer.getListFiles().toString() + " | usage = " + fileServer.getUsage() + " | version = " + versionResponse.getVersion());
 
@@ -608,9 +611,6 @@ public class Proxy implements IProxyCli {
 						try {
 							openConnection(downloadServer.getAddress(), downloadServer.getTcpPort());
 //							System.out.println("fileserver = " + downloadServer.getDir() + " | files = " + downloadServer.getListFiles().toString() + " | usage = " + downloadServer.getUsage());
-
-							InfoResponse infoResponse = (InfoResponse) getResponse(new InfoRequest(fileName));
-							fileSize = infoResponse.getSize();
 							
 							String checksum = ChecksumUtils.generateChecksum(loggedInUser, fileName, version, fileSize);
 							DownloadTicket ticket = new DownloadTicket(loggedInUser, fileName, checksum, downloadServer.getAddress(), downloadServer.getTcpPort());
@@ -640,6 +640,7 @@ public class Proxy implements IProxyCli {
 
 		@Override
 		public MessageResponse upload(UploadRequest request) throws IOException {
+			
 			String fileName = request.getFilename();
 			MessageResponse response = new MessageResponse("File could not be uploaded.");
 
@@ -675,9 +676,11 @@ public class Proxy implements IProxyCli {
 						try {
 							openConnection(fileServer.getAddress(), fileServer.getTcpPort());
 
+		                	InfoResponse infoResponseObject = (InfoResponse) getResponse(new InfoRequest(fileName));
+							fileSize = infoResponseObject.getSize();
                             VersionResponse versionResponse = (VersionResponse) getResponse(new VersionRequest(fileName));
+                            
 //							System.out.println("fileserver = " + fileServer.getDir() + " | files = " + fileServer.getListFiles().toString() + " | usage = " + fileServer.getUsage() + " | version = " + versionResponse.getVersion());
-
                             if (versionResponse.getVersion() >= version) {
                                 version = versionResponse.getVersion();
                             }
@@ -704,8 +707,6 @@ public class Proxy implements IProxyCli {
 							response = (MessageResponse) getResponse(new UploadRequest(fileName, version, content));
 							
 //							System.out.println("fileserver = " + fileServer.getDir() + " | files = " + fileServer.getListFiles().toString() + " | usage = " + fileServer.getUsage() + " | version = " + versionResponse.getVersion());
-		                	InfoResponse infoResponseObject = (InfoResponse) getResponse(new InfoRequest(fileName));
-							fileSize = infoResponseObject.getSize();
 							fileServer.setUsage(fileServer.getUsage() + fileSize);
 							
 							closeConnection();

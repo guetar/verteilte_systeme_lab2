@@ -198,9 +198,9 @@ public class FileServer implements IFileServerCli {
 							shell.writeLine(inputObject.toString());
 						}
 				    } catch (ClassNotFoundException e) {
-
+						writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
 				    } catch (IOException e) {
-
+						writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
 				    }
 				}
 		    } catch (IOException e) {

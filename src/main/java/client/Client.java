@@ -228,6 +228,7 @@ public class Client implements IClientCli {
 
     @Command
     public Response download(String filename) throws IOException {
+    	
 		Object responseObject = getResponse(new DownloadTicketRequest(filename));
 		DownloadTicket downloadTicket = null;
 	
@@ -255,6 +256,7 @@ public class Client implements IClientCli {
 
     @Command
     public MessageResponse upload(String filename) throws IOException {
+    	
 		String filePath = dir + "/" + filename;
 		byte[] content = null;
 		InputStream is = null;
