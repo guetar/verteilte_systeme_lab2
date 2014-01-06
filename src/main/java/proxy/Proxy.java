@@ -85,7 +85,7 @@ public class Proxy implements IProxyCli {
 	private static long timeout;
 	private int checkPeriod;
 	private String proxyPrivateKeyPath = null;
-	private String hmacKey;
+	private String proxyHmacKeyPath;
 	
 	
 	private PrivateKey privateKey = null;
@@ -128,7 +128,7 @@ public class Proxy implements IProxyCli {
 		shellThread.start();
 
 		// getThreadExecutor().execute(shell);
-		getThreadExecutor().execute(new ProxySocket(tcpPort, hmacKey));
+		getThreadExecutor().execute(new ProxySocket(tcpPort, proxyHmacKeyPath));
 		getThreadExecutor().execute(new ProxyDatagramSocket(udpPort));
 
 		timer.schedule(new Alive(), checkPeriod, checkPeriod);
@@ -142,8 +142,8 @@ public class Proxy implements IProxyCli {
 		udpPort = config.getInt("udp.port");
 		timeout = config.getInt("fileserver.timeout");
 		checkPeriod = config.getInt("fileserver.checkPeriod");
-			proxyPrivateKeyPath = config.getString("key");
-		hmacKey = config.getString("hmac.key");
+		proxyPrivateKeyPath = config.getString("key");
+		proxyHmacKeyPath = config.getString("hmac.key");
 		InputStream inUserProperties = ClassLoader.getSystemResourceAsStream("user.properties");
 
 		if (inUserProperties != null) {
@@ -274,11 +274,12 @@ public class Proxy implements IProxyCli {
 		int tcpPort;
 		Mac hMac;
 
-		public ProxySocket(int tcpPort, String hmacKey) {
+		public ProxySocket(int tcpPort, String proxyHmacKeyPath) {
 			this.tcpPort = tcpPort;
 			try{
-				Key secretKey = new SecretKeySpec(hmacKey.getBytes(), "HmacSHA256");
-
+				SecurityAspect secure = SecurityAspect.getInstance();
+				Key secretKey = secure.readSharedKey(proxyHmacKeyPath);
+				
 				hMac = Mac.getInstance("HmacSHA256");
 				hMac.init(secretKey);
 				

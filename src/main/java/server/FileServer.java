@@ -48,6 +48,7 @@ import message.response.VersionResponse;
 import model.DownloadTicket;
 import cli.Command;
 import cli.Shell;
+import security.SecurityAspect;
 import util.ChecksumUtils;
 import util.ComponentFactory;
 import util.Config;
@@ -66,7 +67,7 @@ public class FileServer implements IFileServerCli {
     private int udpPort;
     private int alive;
     private String dir;
-    private String hmacKey;
+    private String fileserverHmacKeyPath;
     
     private Hashtable<String, Integer> versionList = new Hashtable<String, Integer>();
     private ServerSocket socket = null;
@@ -96,7 +97,7 @@ public class FileServer implements IFileServerCli {
 		shellThread.start();
 		
 		//getThreadExecutor().execute(shell);
-		getThreadExecutor().execute(new FileServerSocket(tcpPort, hmacKey));
+		getThreadExecutor().execute(new FileServerSocket(tcpPort, fileserverHmacKeyPath));
 		getThreadExecutor().execute(new sendIsAlive(tcpPort, proxyHost, udpPort, alive, dir));
     }
 
@@ -107,7 +108,7 @@ public class FileServer implements IFileServerCli {
 		    tcpPort = config.getInt("tcp.port");
 		    proxyHost = config.getString("proxy.host");
 		    udpPort = config.getInt("proxy.udp.port");
-		    hmacKey = config.getString("hmac.key");
+		    fileserverHmacKeyPath = config.getString("hmac.key");
 		} catch (Exception e) {
 		    System.out.println("fs.properties invalid");
 		}
@@ -117,10 +118,11 @@ public class FileServer implements IFileServerCli {
     	private int tcpPort;
     	private Mac hMac;
 
-		public FileServerSocket(int tcpPort, String hmacKey) {
+		public FileServerSocket(int tcpPort, String fileserverHmacKeyPath) {
 		    this.tcpPort = tcpPort;
 			try{
-				Key secretKey = new SecretKeySpec(hmacKey.getBytes(), "HmacSHA256");
+				SecurityAspect secure = SecurityAspect.getInstance();
+				Key secretKey = secure.readSharedKey(fileserverHmacKeyPath);
 
 				hMac = Mac.getInstance("HmacSHA256");
 				hMac.init(secretKey);
