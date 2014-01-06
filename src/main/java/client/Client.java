@@ -339,7 +339,9 @@ public class Client implements IClientCli {
 
     @Command
     public MessageResponse logout() throws IOException {
-	return (MessageResponse) getResponse(new LogoutRequest());
+    	this.userPrivateKey = null;
+    	this.userPublicKey = null;
+    	return (MessageResponse) getResponse(new LogoutRequest());
     }
 
     @Command
