@@ -59,7 +59,7 @@ public class SimpleTest {
 
 	@Test
 	public void test() throws Exception {
-		String actual = client.login("alice").toString();
+		String actual = client.login("alice","12345").toString();
 		String expected = "success";
 		assertTrue(String.format("Response must contain '%s' but was '%s'", expected, actual), actual.contains(expected));
 
