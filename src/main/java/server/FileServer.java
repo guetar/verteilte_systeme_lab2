@@ -74,6 +74,7 @@ public class FileServer implements IFileServerCli {
     private DatagramSocket datagramSocket;
 
     static ExecutorService threadExecutor;
+    SecurityAspect secure;
 
     public FileServer(final Config config, final Shell shell) throws Exception {
 		threadExecutor = Executors.newCachedThreadPool();
@@ -96,8 +97,11 @@ public class FileServer implements IFileServerCli {
 		shellThread = new Thread(shell); 
 		shellThread.start();
 		
+		secure = SecurityAspect.getInstance();
+		secure.readSharedKey(fileserverHmacKeyPath, true);
+		
 		//getThreadExecutor().execute(shell);
-		getThreadExecutor().execute(new FileServerSocket(tcpPort, fileserverHmacKeyPath));
+		getThreadExecutor().execute(new FileServerSocket(tcpPort));
 		getThreadExecutor().execute(new sendIsAlive(tcpPort, proxyHost, udpPort, alive, dir));
     }
 
@@ -116,22 +120,9 @@ public class FileServer implements IFileServerCli {
 
     public class FileServerSocket implements Runnable {
     	private int tcpPort;
-    	private Mac hMac;
 
-		public FileServerSocket(int tcpPort, String fileserverHmacKeyPath) {
+		public FileServerSocket(int tcpPort) {
 		    this.tcpPort = tcpPort;
-			try{
-				SecurityAspect secure = SecurityAspect.getInstance();
-				Key secretKey = secure.readSharedKey(fileserverHmacKeyPath);
-
-				hMac = Mac.getInstance("HmacSHA256");
-				hMac.init(secretKey);
-
-			} catch (NoSuchAlgorithmException e) {
-				e.printStackTrace();
-			} catch (InvalidKeyException e) {
-				e.printStackTrace();
-			}
 		}
 	
 		@Override
@@ -140,7 +131,7 @@ public class FileServer implements IFileServerCli {
 		    	socket = new ServerSocket(tcpPort);
 	
 				while (true) {
-				    getThreadExecutor().execute(new FileServerSocketThread(socket.accept(), hMac));
+				    getThreadExecutor().execute(new FileServerSocketThread(socket.accept()));
 				}
 		    } catch (IOException e) {
 	
@@ -160,11 +151,9 @@ public class FileServer implements IFileServerCli {
 		private Socket socket = null;
 		private ObjectOutputStream writer = null;
 		private ObjectInputStream reader = null;
-		private Mac hMac;
 	
-		public FileServerSocketThread(Socket socket, Mac hMac) {
+		public FileServerSocketThread(Socket socket) {
 		    this.socket = socket;
-		    this.hMac = hMac;
 		}
 	
 		@Override
@@ -181,28 +170,28 @@ public class FileServer implements IFileServerCli {
 				    try {
 						inputObject =  reader.readObject();
 
-						if (inputObject instanceof HmacRequest && verifyHmac((HmacRequest) inputObject)) {
+						if (inputObject instanceof HmacRequest && secure.verifyHmac((HmacRequest) inputObject)) {
 							Request request = ((HmacRequest) inputObject).getRequest();
 							
 							if (request instanceof ListRequest) {
-							    writer.writeObject(hmacResponse(list()));
+							    writer.writeObject(secure.hmacResponse(list()));
 							} else if (request instanceof DownloadFileRequest) {
-							    writer.writeObject(hmacResponse(download((DownloadFileRequest) request)));
+							    writer.writeObject(secure.hmacResponse(download((DownloadFileRequest) request)));
 							} else if (request instanceof InfoRequest) {
-							    writer.writeObject(hmacResponse(info((InfoRequest) request)));
+							    writer.writeObject(secure.hmacResponse(info((InfoRequest) request)));
 							} else if (request instanceof VersionRequest) {
-							    writer.writeObject(hmacResponse(version((VersionRequest) request)));
+							    writer.writeObject(secure.hmacResponse(version((VersionRequest) request)));
 							} else if (request instanceof UploadRequest) {
-							    writer.writeObject(hmacResponse(upload((UploadRequest) request)));
+							    writer.writeObject(secure.hmacResponse(upload((UploadRequest) request)));
 							}
 						} else {
-							writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
+							writer.writeObject(secure.hmacResponse(new MessageResponse("Fehlerhafter Request")));
 							shell.writeLine(inputObject.toString());
 						}
 				    } catch (ClassNotFoundException e) {
-						writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
+						writer.writeObject(secure.hmacResponse(new MessageResponse("Fehlerhafter Request")));
 				    } catch (IOException e) {
-						writer.writeObject(hmacResponse(new MessageResponse("Fehlerhafter Request")));
+						writer.writeObject(secure.hmacResponse(new MessageResponse("Fehlerhafter Request")));
 				    }
 				}
 		    } catch (IOException e) {
@@ -216,19 +205,6 @@ public class FileServer implements IFileServerCli {
 		
 				}
 		    }
-		}
-		
-		private boolean verifyHmac(HmacRequest request) {
-			hMac.update(request.getRequest().toString().getBytes());
-			byte[] computedHash = hMac.doFinal();
-			byte[] receivedHash = Base64.decode(((HmacRequest) request).getHmac());
-			return MessageDigest.isEqual(computedHash,receivedHash);
-		}
-		
-		private Response hmacResponse(Response response) {
-			hMac.update(response.toString().getBytes());
-			byte[] hmac = Base64.encode(hMac.doFinal());
-			return new HmacResponse(hmac, response);
 		}
 
 		@Override

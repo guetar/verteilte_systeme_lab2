@@ -85,20 +85,19 @@ public class Proxy implements IProxyCli {
 	private static long timeout;
 	private int checkPeriod;
 	private String proxyPrivateKeyPath = null;
-	private String proxyHmacKeyPath;
-	
+	private String proxyHmacKeyPath = null;
 	
 	private PrivateKey privateKey = null;
-	
-
-	Timer timer = new Timer();
-
-	private static ExecutorService threadExecutor;
-
+	private Key hmacKey = null;
 	static HashSet<String> userkeys = null;
+	
+	Timer timer = new Timer();
+	private static ExecutorService threadExecutor;
 
 	private static DatagramSocket proxyDatagramSocket;
 	private ServerSocket proxySocket;
+	
+	SecurityAspect secure;
 
 	public Proxy() throws Exception {
 		this.config = new Config("proxy");
@@ -126,14 +125,16 @@ public class Proxy implements IProxyCli {
 
 		shellThread = new Thread(shell);
 		shellThread.start();
+		
+		secure = SecurityAspect.getInstance();
+		privateKey = secure.readPrivateKey(proxyPrivateKeyPath,"12345");
+		hmacKey = secure.readSharedKey(proxyHmacKeyPath, true);
 
 		// getThreadExecutor().execute(shell);
-		getThreadExecutor().execute(new ProxySocket(tcpPort, proxyHmacKeyPath));
+		getThreadExecutor().execute(new ProxySocket(tcpPort));
 		getThreadExecutor().execute(new ProxyDatagramSocket(udpPort));
 
 		timer.schedule(new Alive(), checkPeriod, checkPeriod);
-		
-		privateKey = SecurityAspect.getInstance().readPrivateKey(proxyPrivateKeyPath,"12345");
 	}
 
 	private void validateConfig(Config config) throws Exception {
@@ -272,22 +273,9 @@ public class Proxy implements IProxyCli {
 	public class ProxySocket implements Runnable {
 
 		int tcpPort;
-		Mac hMac;
 
-		public ProxySocket(int tcpPort, String proxyHmacKeyPath) {
+		public ProxySocket(int tcpPort) {
 			this.tcpPort = tcpPort;
-			try{
-				SecurityAspect secure = SecurityAspect.getInstance();
-				Key secretKey = secure.readSharedKey(proxyHmacKeyPath);
-				
-				hMac = Mac.getInstance("HmacSHA256");
-				hMac.init(secretKey);
-				
-			} catch (NoSuchAlgorithmException e) {
-				e.printStackTrace();
-			} catch (InvalidKeyException e) {
-				e.printStackTrace();
-			}
 		}
 
 		public void run() {
@@ -298,7 +286,7 @@ public class Proxy implements IProxyCli {
 			}
 			try {
 				while (true) {
-					getThreadExecutor().execute(new ProxySocketThread(proxySocket.accept(), hMac));
+					getThreadExecutor().execute(new ProxySocketThread(proxySocket.accept()));
 				}
 			} catch (IOException e) {
 				// Occurs if socket is closed by !exit
@@ -319,8 +307,6 @@ public class Proxy implements IProxyCli {
 
 		private String loggedInUser = null;
 		private boolean loggedIn = false;
-		private int credits;
-		private Mac hMac;
 		
 		String download;
 		String checksum = "checksum";
@@ -331,11 +317,8 @@ public class Proxy implements IProxyCli {
 		private byte[] ivparameter = null;
 		private byte[] proxyChallenge = null;
 		
-		public ProxySocketThread(Socket socket, Mac hMac) {
-		
-
+		public ProxySocketThread(Socket socket) {
 			this.socket = socket;
-			this.hMac = hMac;
 		}
 
 		public void run() {
@@ -436,30 +419,18 @@ public class Proxy implements IProxyCli {
 				socketFileServer = null;
 			}
 		}
-		
-		public boolean verifyHmac(HmacResponse response) {
-			hMac.update(response.getResponse().toString().getBytes());
-			byte[] computedHash = hMac.doFinal();
-			byte[] receivedHash = Base64.decode(((HmacResponse) response).getHmac());
-			return MessageDigest.isEqual(computedHash,receivedHash);
-		}
-		
-		public Request hmacRequest(Request request) {
-			hMac.update(request.toString().getBytes());
-			byte[] hmac = Base64.encode(hMac.doFinal());
-			return new HmacRequest(hmac, request);
-		}
 
 		public Response getResponse(Request request) {
+			SecurityAspect secure = SecurityAspect.getInstance();
 			Response responseObject = null;
 
 			try {
-				writerFileServer.writeObject(hmacRequest(request));
+				writerFileServer.writeObject(secure.hmacRequest(request));
 				writerFileServer.flush();
 
 				while (true) {
 					responseObject = (Response) readerFileServer.readObject();
-					if (responseObject instanceof HmacResponse && verifyHmac((HmacResponse) responseObject)) {
+					if (responseObject instanceof HmacResponse && secure.verifyHmac((HmacResponse) responseObject)) {
 						return ((HmacResponse) responseObject).getResponse();
 					} else {
 						writer.writeObject(new MessageResponse("Fehlerhafte Response"));

@@ -10,6 +10,7 @@ import java.io.InputStreamReader;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.KeyPair;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
@@ -21,10 +22,16 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+
+import message.Request;
+import message.Response;
+import message.request.HmacRequest;
+import message.response.HmacResponse;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.PEMReader;
@@ -41,7 +48,18 @@ public class SecurityAspect {
 
 	private static SecurityAspect instance = null;
 	
+	private Base64 decoder;
+	private Mac hMac;
+	
 	private SecurityAspect() {
+		try {
+			decoder = new Base64();
+			hMac = Mac.getInstance("HmacSHA256");
+			
+		} catch (NoSuchAlgorithmException e) {
+			// TODO Auto-generated catch block
+//			e.printStackTrace();
+		}
 	}
 	
 	public static SecurityAspect getInstance() {
@@ -314,7 +332,7 @@ public class SecurityAspect {
         }
     }
 	
-	public Key readSharedKey(String path) {
+	public Key readSharedKey(String path, boolean update) {
 		try {
 			byte[] keyBytes = new byte[1024];
 			FileInputStream fis = new FileInputStream(path);
@@ -322,7 +340,9 @@ public class SecurityAspect {
 			fis.close();
 			
 			byte[] input = Hex.decode(keyBytes);
-			return new SecretKeySpec(input, "HmacSHA256");
+			Key key = new SecretKeySpec(input, "HmacSHA256");
+			
+			if(update) updateHmac(key);
 			
 		} catch (FileNotFoundException e) {
 			// TODO Auto-generated catch block
@@ -332,5 +352,40 @@ public class SecurityAspect {
 			e.printStackTrace();
 		}
 		return null;
+	}
+	
+	public void updateHmac(Key hmacKey) {
+		try {
+			hMac.init(hmacKey);
+		} catch (InvalidKeyException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public boolean verifyHmac(HmacRequest request) {
+		hMac.update(request.getRequest().toString().getBytes());
+		byte[] computedHash = hMac.doFinal();
+		byte[] receivedHash = Base64.decode(((HmacRequest) request).getHmac());
+		return MessageDigest.isEqual(computedHash,receivedHash);
+	}
+	
+	public boolean verifyHmac(HmacResponse response) {
+		hMac.update(response.getResponse().toString().getBytes());
+		byte[] computedHash = hMac.doFinal();
+		byte[] receivedHash = Base64.decode(((HmacResponse) response).getHmac());
+		return MessageDigest.isEqual(computedHash,receivedHash);
+	}
+	
+	public Request hmacRequest(Request request) {
+		hMac.update(request.toString().getBytes());
+		byte[] hmac = Base64.encode(hMac.doFinal());
+		return new HmacRequest(hmac, request);
+	}
+	
+	public Response hmacResponse(Response response) {
+		hMac.update(response.toString().getBytes());
+		byte[] hmac = Base64.encode(hMac.doFinal());
+		return new HmacResponse(hmac, response);
 	}
 }
