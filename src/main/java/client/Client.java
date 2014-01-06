@@ -2,7 +2,9 @@ package client;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -10,10 +12,16 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 
+import javax.crypto.SecretKey;
+
+import org.bouncycastle.openssl.PEMReader;
+
+import security.SecurityAspect;
 import util.ComponentFactory;
 import util.Config;
-
 import cli.Command;
 import cli.Shell;
 import message.Response;
@@ -22,7 +30,8 @@ import message.request.CreditsRequest;
 import message.request.DownloadFileRequest;
 import message.request.DownloadTicketRequest;
 import message.request.ListRequest;
-import message.request.LoginRequest;
+import message.request.LoginRequestFirst;
+import message.request.LoginRequestSecond;
 import message.request.LogoutRequest;
 import message.request.UploadRequest;
 import message.response.BuyResponse;
@@ -48,7 +57,12 @@ public class Client implements IClientCli {
     private String dir = null;
     private String host = null;
     private int tcpPort = 0;
-
+//    private String proxyKey = null;
+//    private String userKeyDir = null;
+//    private PublicKey publicKeyUser = null;
+//    private PrivateKey privateKeyUser = null;
+//    private String userPassword = null;
+    
     public Client() throws Exception {
 	this.config = new Config("client");
 	this.shell = new Shell("client", System.out, System.in);
@@ -171,21 +185,68 @@ public class Client implements IClientCli {
     }
 
     @Command
-    public LoginResponse login(String username, String password)
+    public LoginResponse login(String username)
 	    throws IOException {
-	LoginResponse response = null;
-
-	Object responseObject = getResponse(new LoginRequest(username, password));
+    
+		SecurityAspect secure = SecurityAspect.getInstance();
+		
+		Config c = new Config("client");
 	
-	if (responseObject instanceof LoginResponse) {
-	    response = (LoginResponse) responseObject;
-	} else if (responseObject instanceof MessageResponse) {
-	    shell.writeLine(responseObject.toString());
-	} else {
-	    shell.writeLine("Invalid response");
-	}
-	return response;
+	    String proxyKey = c.getString("proxy.key");
+	    String userKeyDir = c.getString("keys.dir");
+			
+		//Read PublicKey of Proxy
+		PublicKey publicKey = secure.readPublicKey(proxyKey);	
+		//Read password of user
+		c = new Config("user");
+		String userPassword = c.getString(username+".password");
+		//Read Keys of User
+		PublicKey userPublicKey = secure.readPublicKey(userKeyDir, username);
+		PrivateKey userPrivateKey = secure.readPrivateKey(userKeyDir, username, userPassword);
+		//User has both keys
+		if(userPublicKey == null || userPrivateKey == null) {
+			shell.writeLine("User hasn't a KeyPair");
+			return null;
+		}
+		//Make a SecureRandom 32Byte
+		byte[] clientChallenge = SecurityAspect.getInstance().getSecureRandomNumber(32);
+		//Send Request
+		Object responseObject = getResponse(new LoginRequestFirst(username, clientChallenge, publicKey));
+		
+		if (responseObject instanceof LoginResponse) {
+			//Decrypt Message
+			byte[] message = ((LoginResponse) responseObject).getMessage();
+			byte[] cipherMessage = secure.decodeBase64(message);
+			byte[] decryptedMessage = secure.decryptCipherRSA(cipherMessage, userPrivateKey);
+			String[] splitMessage = new String(decryptedMessage).split(" ");
+			
+			if(splitMessage.length!=5 || !splitMessage[0].equals("!ok")) {
+				shell.writeLine("Wrong Message sent");
+				return null;
+			}
+			
+			//decode parts of message
+			byte[] clientChallengeFromProxy = secure.decodeBase64(splitMessage[1].getBytes());
+			byte[] proxyChallenge = secure.decodeBase64(splitMessage[2].getBytes());
+			byte[] secKey = secure.decodeBase64(splitMessage[3].getBytes());
+			byte[] ivParameter = secure.decodeBase64(splitMessage[4].getBytes());
+			
+			//build SecretKey out of recieved byte array
+			SecretKey secretKey = secure.generateSecretKeyOutOfByte(secKey);
+			//send third and last message
+			getResponse(new LoginRequestSecond(proxyChallenge, secretKey, ivParameter));
+			
+			
+		} else if (responseObject instanceof MessageResponse) {
+		    shell.writeLine(responseObject.toString());
+		} else {
+		    shell.writeLine("Invalid response");
+		}
+		
+		return null;
     }
+    
+    
 
     @Command
     public Response credits() throws IOException {
@@ -383,4 +444,6 @@ public class Client implements IClientCli {
 	    exc.printStackTrace();
 	}
     }
+
+	
 }

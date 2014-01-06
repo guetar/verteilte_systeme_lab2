@@ -3,7 +3,8 @@ package proxy;
 import message.Response;
 import message.request.BuyRequest;
 import message.request.DownloadTicketRequest;
-import message.request.LoginRequest;
+import message.request.LoginRequestFirst;
+import message.request.LoginRequestSecond;
 import message.request.UploadRequest;
 import message.response.*;
 
@@ -14,6 +15,7 @@ import java.io.IOException;
  */
 public interface IProxy {
 	/**
+	 * First Message
 	 * Authenticates the client with the provided username and password.
 	 * <p/>
 	 * <b>Request</b>:<br/>
@@ -27,7 +29,25 @@ public interface IProxy {
 	 * @return status whether the authentication was successful or not
 	 * @throws IOException if an I/O error occurs
 	 */
-	LoginResponse login(LoginRequest request) throws IOException;
+	LoginResponse login(LoginRequestFirst request) throws IOException;
+	
+	/**
+	 * Second Message
+	 * Authenticates the client with the provided username and password.
+	 * <p/>
+	 * <b>Request</b>:<br/>
+	 * {@code !login &lt;username&gt; &lt;password&gt;}<br/>
+	 * <b>Response:</b><br/>
+	 * {@code !login success}<br/>
+	 * or<br/>
+	 * {@code !login wrong_credentials}
+	 *
+	 * @param request the login request
+	 * @return status whether the authentication was successful or not
+	 * @throws IOException if an I/O error occurs
+	 */
+	LoginResponse login(LoginRequestSecond request) throws IOException;
+
 
 	/**
 	 * Retrieves the current amount of credits of the authenticated user.

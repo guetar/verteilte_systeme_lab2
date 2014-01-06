@@ -1,6 +1,9 @@
 package message.request;
 
+import javax.crypto.SecretKey;
+
 import message.Request;
+import security.SecurityAspect;
 
 /**
  * Authenticates the client with the provided username and password.
@@ -19,10 +22,14 @@ public class LoginRequest implements Request {
 
 	private final String username;
 	private final String password;
+	
+	private final String message;
 
-	public LoginRequest(String username, String password) {
-		this.username = username;
-		this.password = password;
+	public LoginRequest(String clientChallenge, byte[] proxyChallenge, SecretKey key, byte[] ivParameter) {
+		this.username = "";
+		this.password = "";
+		
+		message ="";
 	}
 
 	public String getUsername() {

@@ -1,5 +1,10 @@
 package message.response;
 
+import java.security.PublicKey;
+
+import javax.crypto.SecretKey;
+
+import security.SecurityAspect;
 import message.Response;
 
 /**
@@ -17,29 +22,32 @@ import message.Response;
 public class LoginResponse implements Response {
 	private static final long serialVersionUID = 3134831924072300109L;
 
-	public enum Type {
-		SUCCESS("Successfully logged in."),
-		WRONG_CREDENTIALS("Wrong username or password.");
+	private final byte[] message;
+	private final String tempMessage;
 
-		String message;
-
-		Type(String message) {
-			this.message = message;
-		}
+	public LoginResponse(PublicKey userPublicKey, byte[] clientChallenge, byte[] proxyChallenge, SecretKey key, byte[] ivParameter) {
+				
+		SecurityAspect secure = SecurityAspect.getInstance();
+		
+		String proxyChallengeString = new String(secure.encodeBase64(proxyChallenge));
+		
+		String keyString = new String(secure.encodeBase64(key.getEncoded()));
+		
+		String ivParameterString = new String(secure.encodeBase64(ivParameter));
+		
+		tempMessage = "!ok " + clientChallenge + " " + proxyChallengeString + " " + keyString + " " +  ivParameterString;
+		
+		byte[] cipherText = secure.encryptCipherRSA(tempMessage, userPublicKey);
+		
+		message = secure.encodeBase64(cipherText);
 	}
 
-	private final Type type;
-
-	public LoginResponse(Type type) {
-		this.type = type;
-	}
-
-	public Type getType() {
-		return type;
+	public byte[] getMessage() {
+		return message;
 	}
 
 	@Override
 	public String toString() {
-		return "!login " + getType().name().toLowerCase();
+		return tempMessage;
 	}
 }

@@ -11,6 +11,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.security.PrivateKey;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashSet;
@@ -25,12 +26,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Collections;
 
+import javax.crypto.SecretKey;
+
+import security.SecurityAspect;
 import util.ChecksumUtils;
 import util.ComponentFactory;
 import util.Config;
 import cli.Command;
 import cli.Shell;
-
 import message.Response;
 import message.request.BuyRequest;
 import message.request.CreditsRequest;
@@ -38,7 +41,8 @@ import message.request.DownloadFileRequest;
 import message.request.DownloadTicketRequest;
 import message.request.InfoRequest;
 import message.request.ListRequest;
-import message.request.LoginRequest;
+import message.request.LoginRequestFirst;
+import message.request.LoginRequestSecond;
 import message.request.LogoutRequest;
 import message.request.UploadRequest;
 import message.request.VersionRequest;
@@ -51,7 +55,6 @@ import message.response.InfoResponse;
 import message.response.ListResponse;
 import message.response.LoginResponse;
 import message.response.MessageResponse;
-import message.response.LoginResponse.Type;
 import message.response.UserInfoResponse;
 import message.response.VersionResponse;
 import model.DownloadTicket;
@@ -69,6 +72,11 @@ public class Proxy implements IProxyCli {
 	private int udpPort;
 	private static long timeout;
 	private int checkPeriod;
+	private String proxyPrivateKeyPath = null;
+	
+	
+	private PrivateKey privateKey = null;
+	
 
 	Timer timer = new Timer();
 
@@ -111,6 +119,8 @@ public class Proxy implements IProxyCli {
 		getThreadExecutor().execute(new ProxyDatagramSocket(udpPort));
 
 		timer.schedule(new Alive(), checkPeriod, checkPeriod);
+		
+		privateKey = SecurityAspect.getInstance().readPrivateKey(proxyPrivateKeyPath,"12345");
 	}
 
 	private void validateConfig(Config config) throws Exception {
@@ -119,6 +129,7 @@ public class Proxy implements IProxyCli {
 			udpPort = config.getInt("udp.port");
 			timeout = config.getInt("fileserver.timeout");
 			checkPeriod = config.getInt("fileserver.checkPeriod");
+			proxyPrivateKeyPath = config.getString("key");
 		} catch (Exception exc) {
 			throw new Exception("client.properties invalid");
 
@@ -300,6 +311,10 @@ public class Proxy implements IProxyCli {
 		String checksum = "checksum";
 		InetAddress address;
 		Set<String> listFiles = new HashSet<String>();
+		
+		private SecretKey secretKey = null;
+		private byte[] ivparameter = null;
+		private byte[] proxyChallenge = null;
 
 		public ProxySocketThread(Socket socket) {
 			this.socket = socket;
@@ -316,8 +331,10 @@ public class Proxy implements IProxyCli {
 					try {
 						inputObject = reader.readObject();
 
-						if (inputObject instanceof LoginRequest) {
-							writer.writeObject(login((LoginRequest) inputObject));
+						if (inputObject instanceof LoginRequestFirst) {
+							writer.writeObject(login((LoginRequestFirst) inputObject));
+						} else if (inputObject instanceof LoginRequestSecond) {
+							writer.writeObject(login((LoginRequestSecond) inputObject));
 						} else if (inputObject instanceof LogoutRequest) {
 							writer.writeObject(logout());
 						} else if (inputObject instanceof CreditsRequest) {
@@ -446,25 +463,69 @@ public class Proxy implements IProxyCli {
 		}
 
 		@Override
-		public LoginResponse login(LoginRequest request) throws IOException {
+		public LoginResponse login(LoginRequestFirst request) throws IOException {
+			
+			SecurityAspect secure = SecurityAspect.getInstance();
+			
+			String message = request.getMessage();
+			byte[] cipherMessage = secure.decodeBase64(message.getBytes());
+			
+			byte[] decryptedMessage = secure.decryptCipherRSA(cipherMessage, privateKey);
+			
+			String[] userMessage = new String(decryptedMessage).split(" ");
+			
+			if(!userMessage[0].equals("!login")) {
+				return null;
+			}
+			
+			Config c = new Config("proxy");
+			String keysPath = c.getString("keys.dir");
+			
+			//generate parameter
+			proxyChallenge = secure.getSecureRandomNumber(32);
+			secretKey = secure.generateSecretKey(256);
+			ivparameter = secure.getSecureRandomNumber(16);
+			byte[] clientChallenge = secure.decodeBase64(userMessage[1].getBytes());
+			
+			//save username
 			loggedInUser = request.getUsername();
-			LoginResponse response = new LoginResponse(Type.WRONG_CREDENTIALS);
+			
+			//init response
+			LoginResponse response = new LoginResponse(secure.readPublicKey(keysPath,userMessage[1]), clientChallenge, proxyChallenge, secretKey, ivparameter);
 
-			for (User user : User.getUserList()) {
-				if (user.getName().equals(loggedInUser)) {
-					if (user.getPassword().equals(request.getPassword())) {
+			return response;
+		}
+		
+		@Override
+		public LoginResponse login(LoginRequestSecond request) throws IOException {
+			SecurityAspect secure = SecurityAspect.getInstance();
+			
+			String message = request.getMessage();
+			byte[] cipherMessage = secure.decodeBase64(message.getBytes());
+			
+			byte[] recievedMessage = secure.decryptCipherAES(cipherMessage, secretKey, ivparameter);
+						
+			if((new String(secure.encodeBase64(proxyChallenge))).equals(new String(recievedMessage))) {
+				for (User user : User.getUserList()) {
+					if (user.getName().equals(loggedInUser)) {
+						
 						if (!user.isOnline()) {
 							user.setOnline(true);
 							loggedIn = true;
-							response = new LoginResponse(Type.SUCCESS);
 						} else {
 							throw new IOException("User already logged in!");
 						}
+						
+						break;
 					}
-					break;
 				}
+			} else {
+				//user sent wrong message back
 			}
-			return response;
+			
+			
+			
+			return null;
 		}
 
 		@Override
@@ -577,8 +638,6 @@ public class Proxy implements IProxyCli {
 							openConnection(fileServer.getAddress(), fileServer.getTcpPort());
 
                             VersionResponse versionResponse = (VersionResponse) getResponse(new VersionRequest(fileName));
-//							System.out.println("fileserver = " + fileServer.getDir() + " | files = " + fileServer.getListFiles().toString() + " | usage = " + fileServer.getUsage() + " | version = " + versionResponse.getVersion());
-
                             if (versionResponse.getVersion() >= version) {
                                 version = versionResponse.getVersion();
                                 downloadServer = fileServer;
@@ -597,8 +656,7 @@ public class Proxy implements IProxyCli {
 						
 						try {
 							openConnection(downloadServer.getAddress(), downloadServer.getTcpPort());
-//							System.out.println("fileserver = " + downloadServer.getDir() + " | files = " + downloadServer.getListFiles().toString() + " | usage = " + downloadServer.getUsage());
-
+							
 							InfoResponse infoResponse = (InfoResponse) getResponse(new InfoRequest(fileName));
 							fileSize = infoResponse.getSize();
 							
