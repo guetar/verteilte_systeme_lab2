@@ -26,8 +26,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
+import java.util.SortedMap;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.Collections;
@@ -44,6 +46,7 @@ import org.bouncycastle.util.encoders.Base64;
 import javax.crypto.SecretKey;
 
 import rmi.IManagementService;
+import rmi.INotify;
 import security.SecurityAspect;
 import util.ChecksumUtils;
 import util.ComponentFactory;
@@ -110,6 +113,9 @@ public class Proxy implements IProxyCli {
     public Registry registry = null;
     ManagementService managementService = null;
     IManagementService stub = null;
+
+    private static SortedMap<String, Integer> downloadList = new TreeMap<String, Integer>();
+    private static List<Subscription> subscribeList = new ArrayList<Subscription>();
 
 	public Proxy() throws Exception {
 		this.config = new Config("proxy");
@@ -674,6 +680,7 @@ public class Proxy implements IProxyCli {
 					if (user != null && user.getCredits() >= fileSize) {
 						
 						try {
+														
 							openConnection(downloadServer.getAddress(), downloadServer.getTcpPort());
 							
 							String checksum = ChecksumUtils.generateChecksum(loggedInUser, fileName, version, fileSize);
@@ -685,6 +692,50 @@ public class Proxy implements IProxyCli {
 							user.setCredits(user.getCredits() - fileSize);
 							
 							closeConnection();
+							
+							if (!getDownloadList().containsKey(fileName)) {
+							    getDownloadList().put(fileName, 1);
+							} else {
+							    int value = getDownloadList().get(fileName);
+							    int newValue = value + 1;
+							    getDownloadList().put(fileName, newValue);
+							}
+							
+							setSubscribeList(Subscription
+									.getSubscriptionList());
+
+								for (Subscription subscription : Subscription
+									.getSubscriptionList()) {
+								    if (!getDownloadList().isEmpty()
+									    && getDownloadList().containsKey(
+										    subscription.getFilename())) {
+									int subNumber = subscription
+										.getNumber();
+									int downloadNumber = getDownloadList()
+										.get(subscription.getFilename());
+									if (subNumber == downloadNumber) {
+
+									    INotify notify = null;
+
+									    try {
+										notify = (INotify) registry
+											.lookup("rmi://"
+												+ subscription
+													.getUsername());
+										notify.subscribeResponse("Notification: "
+											+ subscription
+												.getFilename()
+											+ " got downloaded "
+											+ subscription
+												.getNumber()
+											+ " times!");
+
+									    } catch (java.rmi.NotBoundException e) {
+
+									    }
+									}
+								    }
+								}
 							
 						} catch (Exception e) {
 
@@ -913,5 +964,21 @@ public class Proxy implements IProxyCli {
 
 	public static void setThreadExecutor(ExecutorService threadExecutor) {
 		Proxy.threadExecutor = threadExecutor;
+	}
+
+	public static SortedMap<String, Integer> getDownloadList() {
+		return downloadList;
+	}
+
+	public static void setDownloadList(SortedMap<String, Integer> downloadList) {
+		Proxy.downloadList = downloadList;
+	}
+
+	public static List<Subscription> getSubscribeList() {
+		return subscribeList;
+	}
+
+	public static void setSubscribeList(List<Subscription> subscribeList) {
+		Proxy.subscribeList = subscribeList;
 	}
 }

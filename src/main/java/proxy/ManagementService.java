@@ -8,15 +8,47 @@ import java.io.Serializable;
 import java.rmi.RemoteException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 import rmi.IManagementService;
 import util.Config;
 
 public class ManagementService implements IManagementService, Serializable {
     private static final long serialVersionUID = -4735178471135418946L;
+    private String filename = null;
+    private int numberOfDownlaods = 0;
+    private SortedMap<String, Integer> map = new TreeMap<String, Integer>();
     
     public ManagementService() throws RemoteException {
     	super();
+    }
+    
+    @Override
+    public String subscribe(String filename, int numberOfDownloads,
+	    String username) throws RemoteException {
+	String response = "";
+	setFilename(filename);
+	setNumberOfDownlaods(numberOfDownloads);
+	map = Proxy.getDownloadList();
+	
+	if(!map.isEmpty()){
+	    if(map.containsKey(filename)){
+		if(map.get(filename) >= numberOfDownloads){
+		   response = "Notification: " + filename + " got downloaded " + map.get(filename) + " times!";
+		}
+		else{
+		    Subscription.addSubscriptiontoList(new Subscription(filename,
+				numberOfDownloads, username));
+		}
+	    }
+	}
+	else{
+	    Subscription.addSubscriptiontoList(new Subscription(filename,
+			numberOfDownloads, username));
+	}
+	
+	return response;
     }
     
     @Override
@@ -76,4 +108,20 @@ public class ManagementService implements IManagementService, Serializable {
 
 	return response;
     }
+
+	public String getFilename() {
+		return filename;
+	}
+
+	public void setFilename(String filename) {
+		this.filename = filename;
+	}
+
+	public int getNumberOfDownlaods() {
+		return numberOfDownlaods;
+	}
+
+	public void setNumberOfDownlaods(int numberOfDownlaods) {
+		this.numberOfDownlaods = numberOfDownlaods;
+	}
 }

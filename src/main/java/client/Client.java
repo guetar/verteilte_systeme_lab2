@@ -12,10 +12,12 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.rmi.NoSuchObjectException;
 import java.rmi.NotBoundException;
 import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.text.SimpleDateFormat;
@@ -26,6 +28,7 @@ import javax.crypto.SecretKey;
 import org.bouncycastle.openssl.PEMReader;
 
 import rmi.IManagementService;
+import rmi.INotify;
 import security.SecurityAspect;
 import util.ComponentFactory;
 import util.Config;
@@ -52,8 +55,8 @@ import model.DownloadTicket;
 
 public class Client implements IClientCli {
     private final Config config;
-    private final Shell shell;
-    private Thread shellThread = null;
+    private static Shell shell = null;
+	private Thread shellThread = null;
 
     private Socket socket = null;
     private InputStream isSocket = null;
@@ -75,17 +78,21 @@ public class Client implements IClientCli {
     private String keysDir = null;
     private IManagementService managementService = null;
     private Registry registry = null;
+    private Notify notify = null;
+    private INotify stub = null;
+    private String username = null;
+    private boolean loggedIn = false;
     
-    public Client() throws Exception {
+	public Client() throws Exception {
 	this.config = new Config("client");
-	this.shell = new Shell("client", System.out, System.in);
+	Client.shell = new Shell("client", System.out, System.in);
 	new Client(config, shell);
 
     }
 
     public Client(final Config config, final Shell shell) throws Exception {
 	this.config = config;
-	this.shell = shell;
+	Client.shell = shell;
 
 	if (config == null) {
 	    throw new IllegalArgumentException();
@@ -216,6 +223,31 @@ public class Client implements IClientCli {
     }
     
     @Command
+    public String subscribe(String filename, int numberOfDownlaods)
+	    throws IOException {
+	String response = "";
+	if (loggedIn) {
+	    try {
+		registry = LocateRegistry.getRegistry(rmiPort);
+		notify = new Notify();
+		stub = (INotify) UnicastRemoteObject.exportObject(notify, 0);
+		registry.rebind("rmi://" + username, stub);
+
+	    } catch (RemoteException e2) {
+
+	    }
+	    response = "Sucessfully subscribed for file: " + filename;
+	    response = response + "\n";
+	    response = response
+		    + managementService.subscribe(filename, numberOfDownlaods,
+			    username);
+	} else {
+	    response = "You have to log in first.";
+	}
+	return response;
+    }
+    
+    @Command
     public String getProxyPublicKey() throws IOException {
 	String date = new SimpleDateFormat("dd-MM-yyyy").format(new Date());
 	String response = "Successfully received public key of Proxy.";
@@ -252,8 +284,7 @@ public class Client implements IClientCli {
 	    keyfis.close();
 	    shell.writeLine(response);
 	} catch (RemoteException e) {
-	    // TODO Auto-generated catch block
-	    System.err.println(e.getCause().getMessage());
+		
 	}
     }
     
@@ -261,6 +292,8 @@ public class Client implements IClientCli {
     public LoginResponse login(String username, String password)
 	    throws IOException {
     
+    	this.username = username;
+    	
 		SecurityAspect secure = SecurityAspect.getInstance();
 		
 		Config c = new Config("client");
@@ -286,6 +319,7 @@ public class Client implements IClientCli {
 		
 		if (responseObject instanceof LoginResponse) {
 			//Decrypt Message
+			setLoggedIn(true);
 			byte[] message = ((LoginResponse) responseObject).getMessage();
 			byte[] cipherMessage = secure.decodeBase64(message);
 			byte[] decryptedMessage = secure.decryptCipherRSA(cipherMessage, userPrivateKey);
@@ -414,12 +448,20 @@ public class Client implements IClientCli {
     public MessageResponse logout() throws IOException {
     	this.userPrivateKey = null;
     	this.userPublicKey = null;
+    	setLoggedIn(false);
     	return (MessageResponse) getResponse(new LogoutRequest());
     }
 
     @Command
     public MessageResponse exit() throws IOException {
 	logout();
+	
+	try {
+	    UnicastRemoteObject.unexportObject(notify, true);
+	} catch (NoSuchObjectException e) {
+
+	}
+	
 	closeConnection();
 
 	shellThread.interrupt();
@@ -445,6 +487,16 @@ public class Client implements IClientCli {
 	    exc.printStackTrace();
 	}
     }
+    
+    public boolean isLoggedIn() {
+		return loggedIn;
+	}
 
+	public void setLoggedIn(boolean loggedIn) {
+		this.loggedIn = loggedIn;
+	}
 	
+	public static Shell getShell() {
+		return shell;
+	}
 }
