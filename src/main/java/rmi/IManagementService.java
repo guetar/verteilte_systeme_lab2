@@ -8,6 +8,6 @@ public interface IManagementService extends Remote{
     //public void writeQuorum() throws RemoteException;
     //public String topThreeDownloads() throws RemoteException;
     //public String subscribe(String filename, int numberOfDownloads, String username) throws RemoteException;
-    //public byte[] getProxyPublicKey() throws RemoteException;
+    public byte[] getProxyPublicKey() throws RemoteException;
     public String setUserPublicKey(String username, byte[] encKey) throws RemoteException;    
 }

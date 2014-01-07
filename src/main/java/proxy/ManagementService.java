@@ -1,5 +1,6 @@
 package proxy;
 
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -17,11 +18,37 @@ public class ManagementService implements IManagementService, Serializable {
     public ManagementService() throws RemoteException {
     	super();
     }
+    
+    @Override
+    public byte[] getProxyPublicKey() throws RemoteException {
+	String pathToKeys = null;
+	byte[] encKey = null;
+
+	try {
+	    Config mc = new Config("mc");
+	    pathToKeys = mc.getString("keys.dir");
+	} catch (Exception exc) {
+	    System.out.println("mc.properties invalid");
+	}
+
+	// read in the encoded public key bytes
+	FileInputStream keyfis;
+	try {
+	    keyfis = new FileInputStream(pathToKeys + "/proxy.pub.pem");
+	    encKey = new byte[keyfis.available()];
+	    keyfis.read(encKey);
+	} catch (FileNotFoundException e) {
+
+	} catch (IOException e) {
+
+	}
+
+	return encKey;
+    }
 
     @Override
     public String setUserPublicKey(String username, byte[] encKey)
 	    throws RemoteException {
-    	System.out.println("tst");
 	String date = new SimpleDateFormat("dd-MM-yyyy").format(new Date());
 	String response = "Successfully transmitted public key of user: "
 		+ username;
@@ -33,9 +60,7 @@ public class ManagementService implements IManagementService, Serializable {
 	} catch (Exception exc) {
 	    System.out.println("mc.properties invalid");
 	}
-
-	System.out.println(pathToKeys);
-
+	
 	/* save the public key in a file */
 	FileOutputStream keyfos;
 	try {

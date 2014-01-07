@@ -18,6 +18,8 @@ import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import javax.crypto.SecretKey;
 
@@ -211,6 +213,28 @@ public class Client implements IClientCli {
 	}
 
 	return responseObject;
+    }
+    
+    @Command
+    public String getProxyPublicKey() throws IOException {
+	String date = new SimpleDateFormat("dd-MM-yyyy").format(new Date());
+	String response = "Successfully received public key of Proxy.";
+	byte[] encKey = managementService.getProxyPublicKey();
+
+	/* save the public key in a file */
+	FileOutputStream keyfos;
+	try {
+	    keyfos = new FileOutputStream(keysDir + "/"+date+"_proxy.pub.pem");
+	    keyfos.write(encKey);
+	    keyfos.close();
+
+	} catch (FileNotFoundException e) {
+	    response = "Error transmitting public key of proxy";
+	} catch (IOException e) {
+	    response = "Error transmitting public key of proxy";
+	}
+
+	return response;
     }
 
     @Command
