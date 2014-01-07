@@ -25,15 +25,22 @@ public class ManagementService implements IManagementService, Serializable {
     }
     
     @Override
+	public String writeQuorum() throws RemoteException {
+    	String response = "Write-Quorum is set to " + Proxy.getNw();
+		return response;
+	}
+    
+    @Override
     public String topThreeDownloads() throws RemoteException {
 	String response = "";
 	map = Proxy.getDownloadList();
 	int i = 0;
 
 	if (!map.isEmpty()) {
+		response = "Top Three Downloads" + "\n";		
 	    for (String key : map.keySet()){
 		if(i++ < 3){
-		    response = response + key + ": " + map.get(key) + "\n";
+		    response = response + i + ". "+ key + ": " + map.get(key) + "\n";
 		}
 	    }
 	}

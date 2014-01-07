@@ -108,12 +108,15 @@ public class Proxy implements IProxyCli {
 	
 	SecurityAspect secure;
 	
+	private static int nw = 0;
+	private static int nr = 0;
+	
 	int rmiPort = 0;
     String bindingName = null;
     public Registry registry = null;
     ManagementService managementService = null;
     IManagementService stub = null;
-
+    
     private static SortedMap<String, Integer> downloadList = new TreeMap<String, Integer>();
     private static List<Subscription> subscribeList = new ArrayList<Subscription>();
 
@@ -635,8 +638,8 @@ public class Proxy implements IProxyCli {
             
             // Calculate upload quorum
 			int total = FServer.getFileServerList().size();
-			int nw = (int) Math.floor(total / 2) + 1;
-			int nr = total - nw;
+			nw = (int) Math.floor(total / 2) + 1;
+			nr = total - nw;
             int cnt = 0;
 
 			// Should not be necessary
@@ -766,8 +769,8 @@ public class Proxy implements IProxyCli {
             
             // Calculate upload quorum
 			int total = FServer.getFileServerList().size();
-			int nw = (int) Math.floor(total / 2) + 1;
-			int nr = total - nw;
+			nw = (int) Math.floor(total / 2) + 1;
+			nr = total - nw;
             int cnt = 0;
 
 			// Should not be necessary
@@ -980,5 +983,21 @@ public class Proxy implements IProxyCli {
 
 	public static void setSubscribeList(List<Subscription> subscribeList) {
 		Proxy.subscribeList = subscribeList;
+	}
+	
+	public static int getNw() {
+		return nw;
+	}
+
+	public static void setNw(int nw) {
+		Proxy.nw = nw;
+	}
+
+	public static int getNr() {
+		return nr;
+	}
+
+	public static void setNr(int nr) {
+		Proxy.nr = nr;
 	}
 }
