@@ -12,6 +12,11 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.rmi.NoSuchObjectException;
+import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
+import java.rmi.server.UnicastRemoteObject;
 import java.security.PrivateKey;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -38,6 +43,7 @@ import org.bouncycastle.util.encoders.Base64;
 
 import javax.crypto.SecretKey;
 
+import rmi.IManagementService;
 import security.SecurityAspect;
 import util.ChecksumUtils;
 import util.ComponentFactory;
@@ -98,6 +104,12 @@ public class Proxy implements IProxyCli {
 	private ServerSocket proxySocket;
 	
 	SecurityAspect secure;
+	
+	int rmiPort = 0;
+    String bindingName = null;
+    public Registry registry = null;
+    ManagementService managementService = null;
+    IManagementService stub = null;
 
 	public Proxy() throws Exception {
 		this.config = new Config("proxy");
@@ -135,6 +147,17 @@ public class Proxy implements IProxyCli {
 		getThreadExecutor().execute(new ProxyDatagramSocket(udpPort));
 
 		timer.schedule(new Alive(), checkPeriod, checkPeriod);
+		
+		try {
+
+		    managementService = new ManagementService();
+		    registry = LocateRegistry.createRegistry(rmiPort);
+		    stub = (IManagementService) UnicastRemoteObject.exportObject(
+			    managementService, 0);
+		    registry.rebind(bindingName, stub);
+		} catch (RemoteException e) {
+
+		}
 	}
 
 	private void validateConfig(Config config) throws Exception {
@@ -146,6 +169,14 @@ public class Proxy implements IProxyCli {
 		proxyPrivateKeyPath = config.getString("key");
 		proxyHmacKeyPath = config.getString("hmac.key");
 		InputStream inUserProperties = ClassLoader.getSystemResourceAsStream("user.properties");
+		
+		try {
+		    Config mc = new Config("mc");
+		    rmiPort = mc.getInt("proxy.rmi.port");
+		    bindingName = mc.getString("binding.name");
+		} catch (Exception exc) {
+		    throw new Exception("mc.properties invalid");
+		}
 
 		if (inUserProperties != null) {
 			Properties userProperties = new Properties();
@@ -806,6 +837,12 @@ public class Proxy implements IProxyCli {
 	public MessageResponse exit() throws IOException {
 		timer.cancel();
 
+		try {
+		    UnicastRemoteObject.unexportObject(managementService, true);
+		} catch (NoSuchObjectException e) {
+
+		}
+		
 		if (proxySocket != null) {
 			try {
 				proxySocket.close();

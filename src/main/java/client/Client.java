@@ -12,6 +12,10 @@ import java.io.ObjectOutputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.rmi.NotBoundException;
+import java.rmi.RemoteException;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 
@@ -19,6 +23,7 @@ import javax.crypto.SecretKey;
 
 import org.bouncycastle.openssl.PEMReader;
 
+import rmi.IManagementService;
 import security.SecurityAspect;
 import util.ComponentFactory;
 import util.Config;
@@ -63,6 +68,12 @@ public class Client implements IClientCli {
     private PrivateKey userPrivateKey = null;
 //    private String userPassword = null;
     
+    int rmiPort = 0;
+    private String bindingName = null;
+    private String keysDir = null;
+    private IManagementService managementService = null;
+    private Registry registry = null;
+    
     public Client() throws Exception {
 	this.config = new Config("client");
 	this.shell = new Shell("client", System.out, System.in);
@@ -89,6 +100,16 @@ public class Client implements IClientCli {
 	shell.register(this);
 	shellThread = new Thread(shell);
 	shellThread.start();
+	
+	try {
+	    registry = LocateRegistry.getRegistry(rmiPort);
+	    managementService = (IManagementService) registry
+		    .lookup(bindingName);
+	} catch (RemoteException e1) {
+
+	} catch (NotBoundException e) {
+
+	}
     }
 
     private void validateConfig(Config config) throws Exception {
@@ -98,6 +119,14 @@ public class Client implements IClientCli {
 	    tcpPort = config.getInt("proxy.tcp.port");
 	} catch (Exception exc) {
 	    throw new Exception("client.properties invalid");
+	}
+	try {
+	    Config mc = new Config("mc");
+	    rmiPort = mc.getInt("proxy.rmi.port");
+	    bindingName = mc.getString("binding.name");
+	    keysDir = mc.getString("keys.dir");
+	} catch (Exception exc) {
+	    throw new Exception("mc.properties invalid");
 	}
     }
 
@@ -184,6 +213,26 @@ public class Client implements IClientCli {
 	return responseObject;
     }
 
+    @Command
+    public void setUserPublicKey(String username) throws IOException {
+	try {
+	    // read in the encoded public key bytes
+	    FileInputStream keyfis = new FileInputStream(keysDir + "/"
+		    + username + ".pub.pem");
+	    byte[] encKey = new byte[keyfis.available()];
+	    keyfis.read(encKey);
+
+	    String response = managementService.setUserPublicKey(username,
+		    encKey);
+
+	    keyfis.close();
+	    shell.writeLine(response);
+	} catch (RemoteException e) {
+	    // TODO Auto-generated catch block
+	    System.err.println(e.getCause().getMessage());
+	}
+    }
+    
     @Command
     public LoginResponse login(String username, String password)
 	    throws IOException {
