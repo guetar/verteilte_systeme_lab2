@@ -25,8 +25,14 @@ public class ManagementService implements IManagementService, Serializable {
     }
     
     @Override
+	public String readQuorum() throws RemoteException {
+    	String response = "Read-Quorum is set to " + Proxy.getNr()+".";
+		return response;
+	}
+    
+    @Override
 	public String writeQuorum() throws RemoteException {
-    	String response = "Write-Quorum is set to " + Proxy.getNw();
+    	String response = "Write-Quorum is set to " + Proxy.getNw() + ".";
 		return response;
 	}
     

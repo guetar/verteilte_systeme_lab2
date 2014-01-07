@@ -223,6 +223,11 @@ public class Client implements IClientCli {
     }
     
     @Command
+    public String readQuorum() throws IOException {
+    	return managementService.readQuorum();
+    }
+    
+    @Command
     public String writeQuorum() throws IOException {
     	return managementService.writeQuorum();
     }
