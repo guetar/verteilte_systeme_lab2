@@ -223,6 +223,11 @@ public class Client implements IClientCli {
     }
     
     @Command
+    public String topThreeDownloads() throws IOException {
+    	return managementService.topThreeDownloads();
+    }
+    
+    @Command
     public String subscribe(String filename, int numberOfDownlaods)
 	    throws IOException {
 	String response = "";

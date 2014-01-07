@@ -25,6 +25,26 @@ public class ManagementService implements IManagementService, Serializable {
     }
     
     @Override
+    public String topThreeDownloads() throws RemoteException {
+	String response = "";
+	map = Proxy.getDownloadList();
+	int i = 0;
+
+	if (!map.isEmpty()) {
+	    for (String key : map.keySet()){
+		if(i++ < 3){
+		    response = response + key + ": " + map.get(key) + "\n";
+		}
+	    }
+	}
+	else{
+	    response = "Nothing downloaded yet.";
+	}
+
+	return response;
+    }
+    
+    @Override
     public String subscribe(String filename, int numberOfDownloads,
 	    String username) throws RemoteException {
 	String response = "";
