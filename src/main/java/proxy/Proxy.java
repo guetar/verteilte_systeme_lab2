@@ -380,9 +380,9 @@ public class Proxy implements IProxyCli {
 							writer.writeObject(login((LoginRequestSecond) inputObject));
 						} else if (inputObject instanceof EncryptedRequest) {
 							Request request = ((EncryptedRequest) inputObject).getRequest(secretKey, ivparameter);
-							System.out.println(request.getClass());
+							
 							if (request instanceof LogoutRequest) {
-								writer.writeObject(logout());
+								writer.writeObject(new EncryptedResponse(logout(),secretKey, ivparameter));
 							} else if (request instanceof CreditsRequest) {
 								writer.writeObject(new EncryptedResponse(credits(),secretKey, ivparameter));
 							} else if (request instanceof BuyRequest) {

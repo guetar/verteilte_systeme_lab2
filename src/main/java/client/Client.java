@@ -376,7 +376,6 @@ public class Client implements IClientCli {
     @Command
     public Response credits() throws IOException {
 	CreditsResponse response = null;
-	MessageResponse resultResponse = null;
 	
 //	Object responseObject = (Response) getResponse(new CreditsRequest());
 	
@@ -442,30 +441,36 @@ public class Client implements IClientCli {
     	
 		Object responseObject = getResponse(new EncryptedRequest(new DownloadTicketRequest(filename),secretKey, ivParameter));
 		DownloadTicket downloadTicket = null;
-		DownloadFileResponse response = null;
-		if (responseObject instanceof MessageResponse) {
-		    return (Response) responseObject;
-		} else if (responseObject instanceof EncryptedResponse) {
-		    try {
-				response = (DownloadFileResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+		Response response = null;
+		
+		if (responseObject instanceof EncryptedResponse) {
+			
+			try {
+				response = ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
 			} catch (ClassNotFoundException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-		    downloadTicket = response.getTicket();
-		    File file = new File(dir + "/" + downloadTicket.getFilename());
-	    	FileOutputStream fileWriter = new FileOutputStream(file);
-	
-		    try {
-				byte[] content = response.getContent();
-				fileWriter.write(content);
-			    return (Response) response;
-	
-		    } catch (IOException e) {
-	
-		    } finally {
-		    	fileWriter.close();
-		    }
+			
+			if (response instanceof MessageResponse) {
+			    return (Response) responseObject;
+			} else if (response instanceof DownloadFileResponse) {
+			    
+			    downloadTicket = ((DownloadFileResponse)response).getTicket();
+			    File file = new File(dir + "/" + downloadTicket.getFilename());
+		    	FileOutputStream fileWriter = new FileOutputStream(file);
+		
+			    try {
+					byte[] content = ((DownloadFileResponse)response).getContent();
+					fileWriter.write(content);
+				    return (Response) response;
+		
+			    } catch (IOException e) {
+		
+			    } finally {
+			    	fileWriter.close();
+			    }
+			}
 		}
 		return null;
     }
@@ -514,6 +519,7 @@ public class Client implements IClientCli {
     	
     	MessageResponse response = null;
 	    Object responseObject = (Response) getResponse(new EncryptedRequest(new LogoutRequest(),secretKey, ivParameter));
+	    
 		if (responseObject instanceof EncryptedResponse) {
 		    try {
 				response = (MessageResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
@@ -522,8 +528,6 @@ public class Client implements IClientCli {
 				e.printStackTrace();
 			}
 		}
-	    
-	    
 	    return response;
     	
     }
