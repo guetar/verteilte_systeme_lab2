@@ -43,11 +43,13 @@ import message.request.ListRequest;
 import message.request.LoginRequestFirst;
 import message.request.LoginRequestSecond;
 import message.request.LogoutRequest;
+import message.request.EncryptedRequest;
 import message.request.UploadRequest;
 import message.response.BuyResponse;
 import message.response.CreditsResponse;
 import message.response.DownloadFileResponse;
 import message.response.DownloadTicketResponse;
+import message.response.EncryptedResponse;
 import message.response.ListResponse;
 import message.response.LoginResponse;
 import message.response.MessageResponse;
@@ -82,6 +84,9 @@ public class Client implements IClientCli {
     private INotify stub = null;
     private String username = null;
     private boolean loggedIn = false;
+    
+    private SecretKey secretKey = null;
+    private byte[] ivParameter = null;
     
 	public Client() throws Exception {
 	this.config = new Config("client");
@@ -349,10 +354,10 @@ public class Client implements IClientCli {
 			byte[] clientChallengeFromProxy = secure.decodeBase64(splitMessage[1].getBytes());
 			byte[] proxyChallenge = secure.decodeBase64(splitMessage[2].getBytes());
 			byte[] secKey = secure.decodeBase64(splitMessage[3].getBytes());
-			byte[] ivParameter = secure.decodeBase64(splitMessage[4].getBytes());
+			ivParameter = secure.decodeBase64(splitMessage[4].getBytes());
 			
 			//build SecretKey out of recieved byte array
-			SecretKey secretKey = secure.generateSecretKeyOutOfByte(secKey);
+			secretKey = secure.generateSecretKeyOutOfByte(secKey);
 			//send third and last message
 			getResponse(new LoginRequestSecond(proxyChallenge, secretKey, ivParameter));
 			
@@ -371,10 +376,26 @@ public class Client implements IClientCli {
     @Command
     public Response credits() throws IOException {
 	CreditsResponse response = null;
-	Object responseObject = (Response) getResponse(new CreditsRequest());
+	MessageResponse resultResponse = null;
 	
-	if (responseObject instanceof CreditsResponse) {
-	    response = (CreditsResponse) responseObject;
+//	Object responseObject = (Response) getResponse(new CreditsRequest());
+	
+	SecurityAspect secure = SecurityAspect.getInstance();
+	
+	if(secretKey == null || ivParameter == null) {
+		 return new MessageResponse("secretKey or ivparameter = null");		
+	}
+	
+	Response responseObject = (Response) getResponse(new EncryptedRequest(new CreditsRequest(),secretKey, ivParameter));
+	
+	if (responseObject instanceof EncryptedResponse) {
+	    try {
+			response = (CreditsResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	    	    
 	} else if (responseObject instanceof MessageResponse) {
 	    shell.writeLine(responseObject.toString());
 	}
@@ -384,10 +405,14 @@ public class Client implements IClientCli {
     @Command
     public Response buy(long credits) throws IOException {
 	BuyResponse response = null;
-	Object responseObject = (Response) getResponse(new BuyRequest(credits));
-	
-	if (responseObject instanceof BuyResponse) {
-	    response = (BuyResponse) responseObject;
+	Object responseObject = (Response) getResponse(new EncryptedRequest(new BuyRequest(credits),secretKey, ivParameter));
+	if (responseObject instanceof EncryptedResponse) {
+	    try {
+			response = (BuyResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	} else if (responseObject instanceof MessageResponse) {
 	    shell.writeLine(responseObject.toString());
 	}
@@ -397,10 +422,15 @@ public class Client implements IClientCli {
     @Command
     public Response list() throws IOException {
 	ListResponse response = null;
-	Object responseObject = (Response) getResponse(new ListRequest());
+	Object responseObject = (Response) getResponse(new EncryptedRequest(new ListRequest(),secretKey, ivParameter));
 	
-	if (responseObject instanceof ListResponse) {
-	    response = (ListResponse) responseObject;
+	if (responseObject instanceof EncryptedResponse) {
+	    try {
+			response = (ListResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	} else if (responseObject instanceof MessageResponse) {
 	    shell.writeLine(responseObject.toString());
 	}
@@ -410,21 +440,26 @@ public class Client implements IClientCli {
     @Command
     public Response download(String filename) throws IOException {
     	
-		Object responseObject = getResponse(new DownloadTicketRequest(filename));
+		Object responseObject = getResponse(new EncryptedRequest(new DownloadTicketRequest(filename),secretKey, ivParameter));
 		DownloadTicket downloadTicket = null;
-	
+		DownloadFileResponse response = null;
 		if (responseObject instanceof MessageResponse) {
 		    return (Response) responseObject;
-		} else if (responseObject instanceof DownloadFileResponse) {
-			
-		    downloadTicket = ((DownloadFileResponse) responseObject).getTicket();
+		} else if (responseObject instanceof EncryptedResponse) {
+		    try {
+				response = (DownloadFileResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		    downloadTicket = response.getTicket();
 		    File file = new File(dir + "/" + downloadTicket.getFilename());
 	    	FileOutputStream fileWriter = new FileOutputStream(file);
 	
 		    try {
-				byte[] content = ((DownloadFileResponse) responseObject).getContent();
+				byte[] content = response.getContent();
 				fileWriter.write(content);
-			    return (Response) responseObject;
+			    return (Response) response;
 	
 		    } catch (IOException e) {
 	
@@ -448,7 +483,19 @@ public class Client implements IClientCli {
 		    is = new FileInputStream(filePath);
 		    content = new byte[(int) file.length()];
 		    is.read(content);
-		    return (MessageResponse) getResponse(new UploadRequest(filename, version, content));
+		   
+		    MessageResponse response = null;
+		    Object responseObject = (Response) getResponse(new EncryptedRequest(new UploadRequest(filename,version,content),secretKey, ivParameter));
+			if (responseObject instanceof EncryptedResponse) {
+			    try {
+					response = (MessageResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+				} catch (ClassNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+		    
+			}
+		    return response;
 		    
 		} catch(Exception e) {
 		    return new MessageResponse("File not available.");
@@ -464,7 +511,21 @@ public class Client implements IClientCli {
     	this.userPrivateKey = null;
     	this.userPublicKey = null;
     	setLoggedIn(false);
-    	return (MessageResponse) getResponse(new LogoutRequest());
+    	
+    	MessageResponse response = null;
+	    Object responseObject = (Response) getResponse(new EncryptedRequest(new LogoutRequest(),secretKey, ivParameter));
+		if (responseObject instanceof EncryptedResponse) {
+		    try {
+				response = (MessageResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+			} catch (ClassNotFoundException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	    
+	    
+	    return response;
+    	
     }
 
     @Command

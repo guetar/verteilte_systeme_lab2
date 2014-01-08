@@ -65,12 +65,14 @@ import message.request.ListRequest;
 import message.request.LoginRequestFirst;
 import message.request.LoginRequestSecond;
 import message.request.LogoutRequest;
+import message.request.EncryptedRequest;
 import message.request.UploadRequest;
 import message.request.VersionRequest;
 import message.response.BuyResponse;
 import message.response.CreditsResponse;
 import message.response.DownloadFileResponse;
 import message.response.DownloadTicketResponse;
+import message.response.EncryptedResponse;
 import message.response.FileServerInfoResponse;
 import message.response.HmacResponse;
 import message.response.InfoResponse;
@@ -371,24 +373,31 @@ public class Proxy implements IProxyCli {
 				while (true) {
 					try {
 						inputObject = reader.readObject();
-
+						
 						if (inputObject instanceof LoginRequestFirst) {
 							writer.writeObject(login((LoginRequestFirst) inputObject));
 						} else if (inputObject instanceof LoginRequestSecond) {
 							writer.writeObject(login((LoginRequestSecond) inputObject));
-						} else if (inputObject instanceof LogoutRequest) {
-							writer.writeObject(logout());
-						} else if (inputObject instanceof CreditsRequest) {
-							writer.writeObject(credits());
-						} else if (inputObject instanceof BuyRequest) {
-							writer.writeObject(buy((BuyRequest) inputObject));
-						} else if (inputObject instanceof ListRequest) {
-							writer.writeObject(list());
-						} else if (inputObject instanceof DownloadTicketRequest) {
-							writer.writeObject(download((DownloadTicketRequest) inputObject));
-						} else if (inputObject instanceof UploadRequest) {
-							writer.writeObject(upload((UploadRequest) inputObject));
+						} else if (inputObject instanceof EncryptedRequest) {
+							Request request = ((EncryptedRequest) inputObject).getRequest(secretKey, ivparameter);
+							System.out.println(request.getClass());
+							if (request instanceof LogoutRequest) {
+								writer.writeObject(logout());
+							} else if (request instanceof CreditsRequest) {
+								writer.writeObject(new EncryptedResponse(credits(),secretKey, ivparameter));
+							} else if (request instanceof BuyRequest) {
+								writer.writeObject(new EncryptedResponse(buy((BuyRequest) request), secretKey, ivparameter));
+							} else if (request instanceof ListRequest) {
+								writer.writeObject(new EncryptedResponse(list(),secretKey, ivparameter));
+							} else if (request instanceof DownloadTicketRequest) {
+								writer.writeObject(new EncryptedResponse(download((DownloadTicketRequest) request), secretKey, ivparameter));
+							} else if (request instanceof UploadRequest) {
+								writer.writeObject(new EncryptedResponse(upload((UploadRequest) request), secretKey, ivparameter));
+							}
+							
 						}
+						
+						
 					} catch (ClassNotFoundException exc) {
 						writer.writeObject(new MessageResponse("Fehlerhafter Request"));
 					} catch (IOException exc) {

@@ -30,7 +30,7 @@ public class LoginRequestSecond implements Request {
 		
 		String tempMessage = new String(secure.encodeBase64(proxyChallenge));
 		
-		byte[] cipherText = secure.encryptCipherAES(tempMessage, secretKey, ivparameter);
+		byte[] cipherText = secure.encryptCipherAES(tempMessage.getBytes(), secretKey, ivparameter);
 		
 		message = new String(secure.encodeBase64(cipherText));
 	}

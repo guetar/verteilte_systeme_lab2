@@ -16,7 +16,9 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.security.Security;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -223,7 +225,7 @@ public class SecurityAspect {
 	 * @param ivparameter byte[]
 	 * @return byte[]
 	 */
-	public byte[] encryptCipherAES(String text, Key key, byte[] ivparameter) {
+	public byte[] encryptCipherAES(byte[] text, Key key, byte[] ivparameter) {
 		byte[] cipherText = null;
 	
 		IvParameterSpec ivspec = new IvParameterSpec(ivparameter);
@@ -231,7 +233,7 @@ public class SecurityAspect {
 		try {
 			final Cipher cipher = Cipher.getInstance(AES_ALGORITHM);
 			cipher.init(Cipher.ENCRYPT_MODE, key, ivspec);
-			cipherText = cipher.doFinal(text.getBytes());
+			cipherText = cipher.doFinal(text);
 		} catch (Exception e) {
 			e.printStackTrace();
 		} 
@@ -287,7 +289,7 @@ public class SecurityAspect {
 		
 		PrivateKey privateKey = null;
 		
-		PEMReader in;
+		PEMReader in = null;
 		try {
 			DefaultPasswordFinder dpf = new DefaultPasswordFinder(pw.toCharArray());
 		
@@ -387,5 +389,63 @@ public class SecurityAspect {
 		hMac.update(response.toString().getBytes());
 		byte[] hmac = Base64.encode(hMac.doFinal());
 		return new HmacResponse(hmac, response);
+	}
+	
+	public String getMessageDecrypted(byte[] message, SecretKey key, byte[] ivparameter ) {
+		
+		byte[] cipherMessage = this.decodeBase64(message);
+		
+		byte[] recievedMessage = this.decryptCipherAES(cipherMessage, key, ivparameter);
+		
+		String result = new String(recievedMessage);
+		return result;
+	}
+	
+	public List<String> getMessageDecryptedList(byte[] message, SecretKey key, byte[] ivparameter ) {
+		
+		String result = this.getMessageDecrypted(message, key, ivparameter);
+		String[] splitMessage = result.split(" ");
+		
+		List<String> list = new ArrayList<String>();
+		for(String s : splitMessage) {
+			list.add(s);
+		}
+		return list;
+	}
+	
+	public String getMessageDecryptedAll(byte[] message, SecretKey key, byte[] ivparameter ) {
+		
+		List<String> list = this.getMessageDecryptedAllList(message, key, ivparameter);
+		
+		String result = "";
+		for(int i = 0; i<list.size(); i++) {
+			result += list.get(i);
+			if(i<list.size()-1) result+=" ";
+		}
+		return result;
+	}
+	
+	public List<String> getMessageDecryptedAllList(byte[] message, SecretKey key, byte[] ivparameter ) {
+		
+		List<String> list = this.getMessageDecryptedList(message, key, ivparameter);
+		
+		List<String> result = new ArrayList<String>();
+		result.add(list.get(0));
+		for(int i = 1; i<list.size(); i++) {
+			
+			result.add(new String(this.decodeBase64String(list.get(i))));
+		}
+		return result;
+	}
+	
+	
+	
+	public byte[] getMessageEncrypted(String message, SecretKey key, byte[] ivparameter) {
+		
+		byte[] cipherMessage = this.encryptCipherAES(message.getBytes(), key, ivparameter);
+		
+		byte[] result = this.encodeBase64(cipherMessage);
+		
+		return result;
 	}
 }
