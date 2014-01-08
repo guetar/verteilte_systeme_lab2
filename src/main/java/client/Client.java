@@ -361,6 +361,8 @@ public class Client implements IClientCli {
 			//send third and last message
 			getResponse(new LoginRequestSecond(proxyChallenge, secretKey, ivParameter));
 			
+			this.setLoggedIn(true);
+			
 			
 		} else if (responseObject instanceof MessageResponse) {
 		    shell.writeLine(responseObject.toString());
@@ -375,122 +377,190 @@ public class Client implements IClientCli {
 
     @Command
     public Response credits() throws IOException {
-	CreditsResponse response = null;
-	
-//	Object responseObject = (Response) getResponse(new CreditsRequest());
-	
-	SecurityAspect secure = SecurityAspect.getInstance();
-	
-	if(secretKey == null || ivParameter == null) {
-		 return new MessageResponse("secretKey or ivparameter = null");		
-	}
-	
-	Response responseObject = (Response) getResponse(new EncryptedRequest(new CreditsRequest(),secretKey, ivParameter));
-	
-	if (responseObject instanceof EncryptedResponse) {
-	    try {
-			response = (CreditsResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
-		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	    	    
-	} else if (responseObject instanceof MessageResponse) {
-	    shell.writeLine(responseObject.toString());
-	}
-	return response; 
+		Response response = null;
+		
+	//	Object responseObject = (Response) getResponse(new CreditsRequest());
+		if(isLoggedIn() == false) {
+    		response = new MessageResponse("You have to login first.");
+    	} else {
+			SecurityAspect secure = SecurityAspect.getInstance();
+			
+			if(secretKey == null || ivParameter == null) {
+				 return new MessageResponse("secretKey or ivparameter = null");		
+			}
+			
+			Response responseObject = (Response) getResponse(new EncryptedRequest(new CreditsRequest(),secretKey, ivParameter));
+			
+			if (responseObject instanceof EncryptedResponse) {
+			    try {
+					response = (CreditsResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+				} catch (ClassNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			    	    
+			} else if (responseObject instanceof MessageResponse) {
+			    shell.writeLine(responseObject.toString());
+			}
+    	}
+		return response; 
     }
 
     @Command
     public Response buy(long credits) throws IOException {
-	BuyResponse response = null;
-	Object responseObject = (Response) getResponse(new EncryptedRequest(new BuyRequest(credits),secretKey, ivParameter));
-	if (responseObject instanceof EncryptedResponse) {
-	    try {
-			response = (BuyResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
-		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-	} else if (responseObject instanceof MessageResponse) {
-	    shell.writeLine(responseObject.toString());
-	}
-	return response; 
+		Response response = null;
+		
+		if(isLoggedIn() == false) {
+    		response = new MessageResponse("You have to login first.");
+    	} else {
+			
+			Object responseObject = (Response) getResponse(new EncryptedRequest(new BuyRequest(credits),secretKey, ivParameter));
+			if (responseObject instanceof EncryptedResponse) {
+			    try {
+					response = (BuyResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+				} catch (ClassNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			} else if (responseObject instanceof MessageResponse) {
+			    shell.writeLine(responseObject.toString());
+			}
+    	}
+		return response; 
     }
 
     @Command
     public Response list() throws IOException {
-	ListResponse response = null;
-	Object responseObject = (Response) getResponse(new EncryptedRequest(new ListRequest(),secretKey, ivParameter));
 	
-	if (responseObject instanceof EncryptedResponse) {
-	    try {
-			response = (ListResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
-		} catch (ClassNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+		Response response = null;
+		
+		if(isLoggedIn() == false) {
+			response = new MessageResponse("You have to login first.");
+		} else {
+		
+			Object responseObject = (Response) getResponse(new EncryptedRequest(new ListRequest(),secretKey, ivParameter));
+			
+			if (responseObject instanceof EncryptedResponse) {
+			    try {
+					response = (ListResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+				} catch (ClassNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			} else if (responseObject instanceof MessageResponse) {
+			    shell.writeLine(responseObject.toString());
+			}
 		}
-	} else if (responseObject instanceof MessageResponse) {
-	    shell.writeLine(responseObject.toString());
-	}
-	return response; 
+		return response; 
     }
 
     @Command
     public Response download(String filename) throws IOException {
-    	
-		Object responseObject = getResponse(new EncryptedRequest(new DownloadTicketRequest(filename),secretKey, ivParameter));
-		DownloadTicket downloadTicket = null;
-		Response response = null;
-		
-		if (responseObject instanceof EncryptedResponse) {
+    	Response response = null;
+    	if(isLoggedIn() == false) {
+    		response = new MessageResponse("You have to login first.");
+    	} else {
+//    		System.out.println("-------------------------------------------------")
+//    		System.out.println(filename);
+			Object responseObject = getResponse(new EncryptedRequest(new DownloadTicketRequest(filename),secretKey, ivParameter));
+			DownloadTicket downloadTicket = null;
 			
-			try {
-				response = ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
-			} catch (ClassNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+			if(secretKey == null || ivParameter == null) {
+				setLoggedIn(false);
+				return new MessageResponse("secretKey or ivparameter = null");		
 			}
 			
-			if (response instanceof MessageResponse) {
-			    return (Response) responseObject;
-			} else if (response instanceof DownloadFileResponse) {
-			    
-			    downloadTicket = ((DownloadFileResponse)response).getTicket();
-			    File file = new File(dir + "/" + downloadTicket.getFilename());
-		    	FileOutputStream fileWriter = new FileOutputStream(file);
-		
-			    try {
-					byte[] content = ((DownloadFileResponse)response).getContent();
-					fileWriter.write(content);
+			if (responseObject instanceof EncryptedResponse) {
+				
+				try {
+					response = ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+				} catch (ClassNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				
+				if (response instanceof MessageResponse) {
 				    return (Response) response;
-		
-			    } catch (IOException e) {
-		
-			    } finally {
-			    	fileWriter.close();
-			    }
+				} else if (response instanceof DownloadFileResponse) {
+				    
+				    downloadTicket = ((DownloadFileResponse)response).getTicket();
+				    File file = new File(dir + "/" + downloadTicket.getFilename());
+			    	FileOutputStream fileWriter = new FileOutputStream(file);
+			
+				    try {
+						byte[] content = ((DownloadFileResponse)response).getContent();
+						fileWriter.write(content);
+			
+				    } catch (IOException e) {
+			
+				    } finally {
+				    	fileWriter.close();
+				    }
+				}
 			}
-		}
-		return null;
+    	}
+		return response;
     }
 
     @Command
     public MessageResponse upload(String filename) throws IOException {
     	
-		String filePath = dir + "/" + filename;
-		byte[] content = null;
-		InputStream is = null;
-		File file = new File(filePath);
-		int version = 1;
-	
-		try {
-		    is = new FileInputStream(filePath);
-		    content = new byte[(int) file.length()];
-		    is.read(content);
-		   
-		    MessageResponse response = null;
-		    Object responseObject = (Response) getResponse(new EncryptedRequest(new UploadRequest(filename,version,content),secretKey, ivParameter));
+    	Response response = null;
+    	if(isLoggedIn() == false) {
+    		response = new MessageResponse("You have to login first.");
+    	} else {
+			String filePath = dir + "/" + filename;
+			byte[] content = null;
+			InputStream is = null;
+			File file = new File(filePath);
+			int version = 1;
+		
+			try {
+			    is = new FileInputStream(filePath);
+			    content = new byte[(int) file.length()];
+			    is.read(content);
+			   
+			    Object responseObject = (Response) getResponse(new EncryptedRequest(new UploadRequest(filename,version,content),secretKey, ivParameter));
+				if (responseObject instanceof EncryptedResponse) {
+				    try {
+						response = (MessageResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
+					} catch (ClassNotFoundException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+			    
+				}
+			    
+			    
+			} catch(Exception e) {
+			    return new MessageResponse("File not available.");
+			} finally {
+			    if(is != null){
+			    	is.close();
+			    }
+			}
+    	}
+    	
+    	return (MessageResponse) response;
+    }
+
+    @Command
+    public MessageResponse logout() throws IOException {
+    	this.userPrivateKey = null;
+    	this.userPublicKey = null;
+    	
+    	MessageResponse response = null;
+    	
+    	if(isLoggedIn() == false) {
+    		response = new MessageResponse("You have to login first.");
+    	} else {
+	    	if(secretKey == null || ivParameter == null) {
+	   		 return new MessageResponse("secretKey or ivparameter = null");		
+	    	}
+	    	
+	    	
+		    Response responseObject = (Response) getResponse(new EncryptedRequest(new LogoutRequest(),secretKey, ivParameter));
+		    
 			if (responseObject instanceof EncryptedResponse) {
 			    try {
 					response = (MessageResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
@@ -498,36 +568,11 @@ public class Client implements IClientCli {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
-		    
 			}
-		    return response;
-		    
-		} catch(Exception e) {
-		    return new MessageResponse("File not available.");
-		} finally {
-		    if(is != null){
-		    	is.close();
-		    }
-		}
-    }
-
-    @Command
-    public MessageResponse logout() throws IOException {
-    	this.userPrivateKey = null;
-    	this.userPublicKey = null;
-    	setLoggedIn(false);
+			
+			setLoggedIn(false);
+    	}
     	
-    	MessageResponse response = null;
-	    Object responseObject = (Response) getResponse(new EncryptedRequest(new LogoutRequest(),secretKey, ivParameter));
-	    
-		if (responseObject instanceof EncryptedResponse) {
-		    try {
-				response = (MessageResponse) ((EncryptedResponse) responseObject).getResponse(secretKey, ivParameter);
-			} catch (ClassNotFoundException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
 	    return response;
     	
     }

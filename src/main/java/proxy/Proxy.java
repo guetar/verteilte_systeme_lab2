@@ -689,6 +689,7 @@ public class Proxy implements IProxyCli {
 
 				if (downloadServer != null) {
 					User user = User.getUser(loggedInUser);
+//					System.out.println(((user==null) ? "ja" : "nein") + " " + user.getCredits() + " >= " + fileSize);
 					if (user != null && user.getCredits() >= fileSize) {
 						
 						try {
@@ -698,6 +699,7 @@ public class Proxy implements IProxyCli {
 							String checksum = ChecksumUtils.generateChecksum(loggedInUser, fileName, version, fileSize);
 							DownloadTicket ticket = new DownloadTicket(loggedInUser, fileName, checksum, downloadServer.getAddress(), downloadServer.getTcpPort());
 
+							
 							response = (DownloadFileResponse) getResponse(new DownloadFileRequest(ticket));
 							
 							downloadServer.setUsage(downloadServer.getUsage() + fileSize);
@@ -762,6 +764,7 @@ public class Proxy implements IProxyCli {
 			} else {
 				response = new MessageResponse("You have to log in first.");
 			}
+//			System.out.println(response.toString());
 			return response;
 		}
 

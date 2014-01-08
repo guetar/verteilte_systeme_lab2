@@ -1,0 +1,30 @@
+*	startProxy proxy
+*	startClient client
+*	startClient client1
+*	startClient client2
+*	startFileServer fs1
+*	startFileServer fs2
+*	startFileServer fs3
+*	startFileServer fs4
+
+client: !login alice 12345
+client1: !login bill 23456
+client2: !login simon 12345
+client: !upload upload.txt
+client: !upload upload.txt
+client1: !upload upload.txt
+client2: !upload upload.txt
+client: !download short.txt
+client: !download long.txt
+client1: !buy 25000
+client1: !download long.txt
+client2: !download long.txt
+
+client: !exit
+client1: !exit
+client2: !exit
+proxy: !exit
+fs1: !exit
+fs2: !exit
+fs3: !exit
+fs4: !exit
