@@ -309,11 +309,11 @@ public class Client implements IClientCli {
     }
     
     @Command
-    public LoginResponse login(String username, String password)
+    public MessageResponse login(String username, String password)
 	    throws IOException {
     
     	this.username = username;
-    	
+    	MessageResponse response = null;
 		SecurityAspect secure = SecurityAspect.getInstance();
 		
 		Config c = new Config("client");
@@ -329,8 +329,7 @@ public class Client implements IClientCli {
 		userPrivateKey = secure.readPrivateKey(userKeyDir, username, userPassword);
 		//User has both keys
 		if(userPublicKey == null || userPrivateKey == null) {
-			shell.writeLine("Non existing private or public Key");
-			return null;
+			return new MessageResponse("Non existing private or public Key for user "+ username);
 		}
 		//Make a SecureRandom 32Byte
 		byte[] clientChallenge = SecurityAspect.getInstance().getSecureRandomNumber(32);
@@ -347,7 +346,7 @@ public class Client implements IClientCli {
 			
 			if(splitMessage.length!=5 || !splitMessage[0].equals("!ok")) {
 				shell.writeLine("Wrong Message sent");
-				return null;
+				return new MessageResponse("Wrong Message");
 			}
 			
 			//decode parts of message
@@ -359,18 +358,21 @@ public class Client implements IClientCli {
 			//build SecretKey out of recieved byte array
 			secretKey = secure.generateSecretKeyOutOfByte(secKey);
 			//send third and last message
-			getResponse(new LoginRequestSecond(proxyChallenge, secretKey, ivParameter));
+			response = (MessageResponse) getResponse(new LoginRequestSecond(proxyChallenge, secretKey, ivParameter));
 			
-			this.setLoggedIn(true);
+			if(response.toString().contentEquals("SUCCESSFULL")) {
+				this.setLoggedIn(true);
+			}
+			
 			
 			
 		} else if (responseObject instanceof MessageResponse) {
 		    shell.writeLine(responseObject.toString());
 		} else {
-		    shell.writeLine("Invalid response");
+			return new MessageResponse("Invalid Response");
 		}
 		
-		return null;
+		return response;
     }
     
     
@@ -460,8 +462,6 @@ public class Client implements IClientCli {
     	if(isLoggedIn() == false) {
     		response = new MessageResponse("You have to login first.");
     	} else {
-//    		System.out.println("-------------------------------------------------")
-//    		System.out.println(filename);
 			Object responseObject = getResponse(new EncryptedRequest(new DownloadTicketRequest(filename),secretKey, ivParameter));
 			DownloadTicket downloadTicket = null;
 			

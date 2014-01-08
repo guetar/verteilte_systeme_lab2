@@ -46,7 +46,7 @@ public interface IProxy {
 	 * @return status whether the authentication was successful or not
 	 * @throws IOException if an I/O error occurs
 	 */
-	LoginResponse login(LoginRequestSecond request) throws IOException;
+	MessageResponse login(LoginRequestSecond request) throws IOException;
 
 
 	/**

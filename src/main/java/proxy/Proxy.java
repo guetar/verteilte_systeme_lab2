@@ -531,7 +531,7 @@ public class Proxy implements IProxyCli {
 		}
 		
 		@Override
-		public LoginResponse login(LoginRequestSecond request) throws IOException {
+		public MessageResponse login(LoginRequestSecond request) throws IOException {
 			SecurityAspect secure = SecurityAspect.getInstance();
 			
 			String message = request.getMessage();
@@ -547,19 +547,16 @@ public class Proxy implements IProxyCli {
 							user.setOnline(true);
 							loggedIn = true;
 						} else {
-							throw new IOException("User already logged in!");
+							throw new IOException("!login User already logged in!");
 						}
 						
 						break;
 					}
 				}
 			} else {
-				//user sent wrong message back
+				return new MessageResponse("!login nicht erfolgreich!");
 			}
-			
-			
-			
-			return null;
+			return new MessageResponse("!login SUCCESSFULL");
 		}
 
 		@Override
@@ -689,7 +686,6 @@ public class Proxy implements IProxyCli {
 
 				if (downloadServer != null) {
 					User user = User.getUser(loggedInUser);
-//					System.out.println(((user==null) ? "ja" : "nein") + " " + user.getCredits() + " >= " + fileSize);
 					if (user != null && user.getCredits() >= fileSize) {
 						
 						try {
